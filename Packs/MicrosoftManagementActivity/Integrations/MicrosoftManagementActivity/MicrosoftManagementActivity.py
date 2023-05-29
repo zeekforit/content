@@ -457,6 +457,7 @@ def get_fetch_start_and_end_time(last_run, first_fetch_datetime):
         last_fetch = last_run.get('last_fetch')
         fetch_start_datetime = datetime.strptime(last_fetch, DATE_FORMAT)
 
+    fetch_start_datetime = max(fetch_start_datetime, dateparser.parse("7 days ago"))
     fetch_end_datetime = get_fetch_end_time_based_on_start_time(fetch_start_datetime)
 
     # The API expects strings of format YYYY:DD:MMTHH:MM:SS
