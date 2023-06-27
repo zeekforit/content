@@ -28,16 +28,15 @@ name: Exabeam Data Lake
 script:
   commands:
   - arguments:
-    - default: false
+    - default: 50
       description: '[Enter a description of the argument, including any important information users need to know, for example, default values.]'
       isArray: false
-      name: dummy
-      required: true
+      name: limit
       secret: false
     deprecated: false
     description: '[Enter a description of the command, including any important information users need to know, for example required permissions.]'
     execution: false
-    name: baseintegration-dummy
+    name: exabeam-data-lake-query
     outputs:
     - contextPath: BaseIntegration.Output
       description: '[Enter a description of the data returned in this output.]'
