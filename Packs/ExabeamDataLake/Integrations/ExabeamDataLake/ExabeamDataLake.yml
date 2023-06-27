@@ -4,15 +4,13 @@ commonfields:
   version: -1
 configuration:
 - defaultvalue: https://example.com/
-  display: Your server URL
+  display: Server URL
   name: url
   required: true
   type: 0
-- displaypassword: API Key
-  additionalinfo: The API Key to use for connection
-  name: credentials
+- name: credentials
   required: true
-  hiddenusername: true
+  display: User Name
   type: 9
 - display: Trust any certificate (not secure)
   name: insecure
@@ -28,7 +26,7 @@ name: Exabeam Data Lake
 script:
   commands:
   - arguments:
-    - default: 50
+    - default: 
       description: '[Enter a description of the argument, including any important information users need to know, for example, default values.]'
       isArray: false
       name: limit

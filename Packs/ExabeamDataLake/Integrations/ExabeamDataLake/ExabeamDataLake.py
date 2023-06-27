@@ -1,4 +1,3 @@
-from click import command
 import demistomock as demisto
 from CommonServerPython import *  # noqa # pylint: disable=unused-wildcard-import
 from CommonServerUserPython import *  # noqa
@@ -21,26 +20,15 @@ class Client(BaseClient):
     """Client class to interact with the service API"""
 
     def get_query(self, dummy: str) -> dict[str, str]:
-        """Returns a simple python dict with the information provided
-        in the input (dummy).
 
-        :type dummy: ``str``
-        :param dummy: string to add in the dummy dict that is returned
-
-        :return: dict as {"dummy": dummy}
-        :rtype: ``str``
-        """
-
-        return {"dummy": dummy}
-
-
-''' HELPER FUNCTIONS '''
+        return 
 
 
 ''' COMMAND FUNCTIONS '''
+
+
 def query_command(client: Client, args: dict[str, Any]) -> CommandResults:
     ...
-
 
 def test_module(client: Client) -> str:
     """Tests API connectivity and authentication'
@@ -66,6 +54,7 @@ def test_module(client: Client) -> str:
             raise e
     return message
 
+
 ''' MAIN FUNCTION '''
 
 
@@ -78,18 +67,13 @@ def main() -> None:
     params = demisto.params()
     args = demisto.args()
     command = demisto.command()
-    api_key = params.get('credentials', {}).get('password')
+    user_name = params.get('credentials', {}).get('identifier')
+    password = params.get('credentials', {}).get('password')
 
-    # get the service API url
-    base_url = urljoin(demisto.params()['url'], '/api/v1')
+    base_url = params['url']
 
-    # if your Client class inherits from BaseClient, SSL verification is
-    # handled out of the box by it, just pass ``verify_certificate`` to
-    # the Client constructor
-    verify_certificate = not demisto.params().get('insecure', False)
+    verify_certificate = not params.get('insecure', False)
 
-    # if your Client class inherits from BaseClient, system proxy is handled
-    # out of the box by it, just pass ``proxy`` to the Client constructor
     proxy = params.get('proxy', False)
 
     demisto.debug(f'Command being called is {command}')
@@ -113,7 +97,7 @@ def main() -> None:
                 return_results(query_command(client, args))
 
     except Exception as e:
-        return_error(f'Failed to execute {demisto.command()} command.\nError:\n{str(e)}')
+        return_error(f'Failed to execute {command} command.\nError:\n{str(e)}')
 
 
 ''' ENTRY POINT '''
