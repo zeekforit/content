@@ -28,7 +28,10 @@ class Client(BaseClient):
 
 
 def query_command(client: Client, args: dict[str, Any]) -> CommandResults:
-    ...
+    amount_results_to_get: int | bool
+    if not (amount_results_to_get := argToBoolean(args.get('all_results'))):
+        amount_results_to_get = args.get('limit', 50)
+
 
 def test_module(client: Client) -> str:
     """Tests API connectivity and authentication'
@@ -91,10 +94,11 @@ def main() -> None:
 
         match command:
             case 'test-module':
-                result = test_module(client)
-                return_results(result)
+                return_results(test_module(client))
             case 'exabeam-data-lake-query':
                 return_results(query_command(client, args))
+            case _:
+                raise NotImplementedError(f"Command {command} is not supported")
 
     except Exception as e:
         return_error(f'Failed to execute {command} command.\nError:\n{str(e)}')

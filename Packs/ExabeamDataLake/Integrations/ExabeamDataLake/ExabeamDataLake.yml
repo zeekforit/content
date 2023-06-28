@@ -1,6 +1,6 @@
 category: Analytics & SIEM
 commonfields:
-  id: Exabeam Data Lake
+  id: Exabeam Data Lake_copy
   version: -1
 configuration:
 - defaultvalue: https://example.com/
@@ -21,16 +21,21 @@ configuration:
   required: false
   type: 8
 description: '[Enter a comprehensive, yet concise, description of what the integration does, what use cases it is designed for, etc.]'
-display: 'Exabeam Data Lake'
-name: Exabeam Data Lake
+display: Exabeam Data Lake_copy
+name: Exabeam Data Lake_copy
 script:
   commands:
   - arguments:
-    - default: 
+    - defaultValue: '50'
       description: '[Enter a description of the argument, including any important information users need to know, for example, default values.]'
-      isArray: false
       name: limit
-      secret: false
+    - defaultValue: false
+      auto: PREDEFINED
+      description: '[Enter a description of the argument, including any important information users need to know, for example, default values.]'
+      name: all_result
+      predefined:
+      - true
+      - false
     deprecated: false
     description: '[Enter a description of the command, including any important information users need to know, for example required permissions.]'
     execution: false
