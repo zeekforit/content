@@ -270,6 +270,6 @@ view: |-
     }
   }
 tests:
-- No tests (auto formatted)
+- Test_Playbook_-_MDE_-_Retrieve_File.yml
 fromversion: 6.5.0
 system: true
