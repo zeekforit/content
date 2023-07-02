@@ -8,8 +8,8 @@ import dateparser
 import demistomock as demisto
 import pytz
 import requests
-import splunklib.client as client
-import splunklib.results as results
+from splunklib import client
+from splunklib import results
 from splunklib.data import Record
 import urllib3
 from CommonServerPython import *  # noqa: F401
@@ -19,6 +19,7 @@ urllib3.disable_warnings()
 
 # Define utf8 as default encoding
 params = demisto.params()
+
 SPLUNK_TIME_FORMAT = "%Y-%m-%dT%H:%M:%S"
 VERIFY_CERTIFICATE = not bool(params.get('unsecure'))
 FETCH_LIMIT = int(params.get('fetch_limit')) if params.get('fetch_limit') else 50
@@ -39,6 +40,9 @@ DEFAULT_DISPOSITIONS = {
     'Other': 'disposition:5',
     'Undetermined': 'disposition:6'
 }
+COMMENT_TAG_FROM_SPLUNK = 'FROM SPLUNK'
+COMMENT_TAG_FROM_XSOAR = 'FROM XSOAR'
+COMMENT_MIRRORED_FROM_XSOAR = 'Mirrored from Cortex XSOAR'
 
 # =========== Mirroring Mechanism Globals ===========
 MIRROR_DIRECTION = {
@@ -428,6 +432,7 @@ def fetch_notables(service: client.Service, mapper: UserMappingObject, cache_obj
 
 
 def fetch_incidents(service: client.Service, mapper: UserMappingObject):
+    demisto.debug(f'PPPPP: {demisto.params()}')
     if ENABLED_ENRICHMENTS:
         integration_context = get_integration_context()
         if not demisto.getLastRun() and integration_context:
@@ -470,7 +475,7 @@ class Enrichment:
         self.status = status if status else Enrichment.IN_PROGRESS
 
     @classmethod
-    def from_job(cls, enrichment_type, job: client.Job):
+    def from_job(cls, enrichment_type, job: client.Job) -> Any:
         """ Creates an Enrichment object from Splunk Job object
 
         Args:
@@ -486,7 +491,7 @@ class Enrichment:
             return cls(enrichment_type=enrichment_type, status=Enrichment.FAILED)
 
     @classmethod
-    def from_json(cls, enrichment_dict):
+    def from_json(cls, enrichment_dict) -> Any:
         """ Deserialization method.
 
         Args:
@@ -579,9 +584,31 @@ class Notable:
                     labels.append({'type': rawKey, 'value': val})
         if demisto.get(notable_data, 'security_domain'):
             labels.append({'type': 'security_domain', 'value': notable_data["security_domain"]})
+        if demisto.get(notable_data, 'comment'):
+            comment_entries = []
+            comments = notable_data.get('comment')
+            reviewers = notable_data.get('reviewer')
+            review_times = notable_data.get('review_time')
+            if not isinstance(comments, list):
+                comments = [notable_data.get('comment')]
+            if not isinstance(reviewers, list):
+                reviewers = [notable_data.get('reviewer')]
+            if not isinstance(review_times, list):
+                review_times = [notable_data.get('review_time')]
+            demisto.debug(f"data to update comment= {comments}, review=  {reviewers}, time= {review_times}")
+            for comment, reviewer, review_time in zip(comments, reviewers, review_times):
+                # Creating a comment
+                comment_entries.append({
+                    'Comment': comment,
+                    'Comment time': review_time,
+                    'Reviwer': reviewer
+                })
+        labels.append({'type': 'SplunkComments', 'value': str(comment_entries)})
         incident['labels'] = labels
         incident['dbotMirrorId'] = notable_data.get(EVENT_ID)
-
+        notable_data['SplunkComments'] = comment_entries
+        incident["rawJSON"] = json.dumps(notable_data)
+        incident['SplunkComments'] = comment_entries
         return incident
 
     def to_incident(self, mapper: UserMappingObject):
@@ -1263,6 +1290,44 @@ def get_remote_data_command(service: client.Service, args: dict,
         demisto.debug("owner field was found, changing according to mapping.")
         updated_notable["owner"] = mapper.get_xsoar_user_by_splunk(
             updated_notable.get("owner")) if mapper.should_map else updated_notable.get("owner")
+    if updated_notable.get('comment'):
+        comment_entries = []
+        comments = updated_notable.get('comment')
+        reviewers = updated_notable.get('reviewer')
+        review_times = updated_notable.get('review_time')
+        if not isinstance(comments, list):
+            comments = [updated_notable.get('comment')]
+        if not isinstance(reviewers, list):
+            reviewers = [updated_notable.get('reviewer')]
+        if not isinstance(review_times, list):
+            review_times = [updated_notable.get('review_time')]
+        demisto.debug(
+            f"data to update comment= {comments}, review=  {reviewers}, time= {review_times},",
+            f"last= {last_update_splunk_timestamp}")
+        for comment, reviewer, review_time in zip(comments, reviewers, review_times):
+            demisto.debug(
+                f'if time={float(review_time)} > last_run={last_update_splunk_timestamp}',
+                f'{last_update_splunk_timestamp < float(review_time)}')
+            if (COMMENT_MIRRORED_FROM_XSOAR not in comment and last_update_splunk_timestamp
+                    and last_update_splunk_timestamp < float(review_time)):
+                # Creating a note
+                comment_entries.append({
+                    'Comment': comment,
+                    'Comment time': review_times,
+                    'Reviwer': reviewer
+                })
+                demisto.debug(f'update comment: {updated_notable}')
+                entries.append({
+                    'Type': EntryType.NOTE,
+                    'Contents': f'{comment}\n Splunk Author: {reviewer}',
+                    'ContentsFormat': EntryFormat.TEXT,
+                    'Tags': [COMMENT_TAG_FROM_SPLUNK],  # The list of tags to add to the entry
+                    'Note': True,
+                })
+                demisto.debug(f'update comment-{comment}')
+        # if comment_entries:
+            # demisto.debug(f"before labels-{updated_notable['labels']}")
+            # updated_notable['labels'].append(({'type': 'splunkComments', 'value': str(comment_entries)}))
 
     demisto.debug(f'notable {notable_id} data: {updated_notable}')
     if close_incident and updated_notable.get('status_label'):
@@ -1271,20 +1336,20 @@ def get_remote_data_command(service: client.Service, args: dict,
         if status_label == "Closed" or (status_label in close_extra_labels) \
                 or (close_end_statuses and argToBoolean(updated_notable.get('status_end', 'false'))):
             demisto.info(f'Closing incident related to notable {notable_id} with status_label: {status_label}')
-            entries = [{
+            entries.append({
                 'Type': EntryType.NOTE,
                 'Contents': {
                     'dbotIncidentClose': True,
                     'closeReason': f'Notable event was closed on Splunk with status \"{status_label}\".'
                 },
                 'ContentsFormat': EntryFormat.JSON
-            }]
+            })
 
     else:
         demisto.debug('"status_label" key could not be found on the returned data, '
                       f'skipping closure mirror for notable {notable_id}.')
 
-    demisto.debug(f'Updated notable {notable_id}')
+    demisto.debug(f'Updated notable {updated_notable}')
     return_results(GetRemoteDataResponse(mirrored_object=updated_notable, entries=entries))
 
 
@@ -1327,7 +1392,11 @@ def update_remote_system_command(args, params, service: client.Service, auth_tok
     Returns:
         notable_id (str): The notable id
     """
+    demisto.debug(f'start mirroring out :{args}')
     parsed_args = UpdateRemoteSystemArgs(args)
+    demisto.debug(
+        f"parsed_args, data= {parsed_args.data},\n delta={parsed_args.delta}\n entries={parsed_args.entries},\n ",
+        f"incident_changed={parsed_args.incident_changed}")
     delta = parsed_args.delta
     notable_id = parsed_args.remote_incident_id
 
@@ -1341,6 +1410,8 @@ def update_remote_system_command(args, params, service: client.Service, auth_tok
                 if new_owner:
                     changed_data['owner'] = new_owner
             elif field in OUTGOING_MIRRORED_FIELDS:
+                if field == 'comment':
+                    demisto.debug(f"updated_comment= {delta[field]}")
                 changed_data[field] = delta[field]
 
         # Close notable if relevant
@@ -1348,7 +1419,14 @@ def update_remote_system_command(args, params, service: client.Service, auth_tok
             demisto.debug('Closing notable {}'.format(notable_id))
             changed_data['status'] = '5'  # type: ignore
 
-        if any(changed_data.values()):
+        # for comment in changed_data['comment']:
+        #     if COMMENT_TAG_FROM_XSOAR in parsed_args.entry.tags:
+        #                 demisto.debug('Add new comment')
+        #                 comment_content = f'{comment}\n\n{COMMENT_MIRRORED_FROM_XSOAR}'
+        #                 changed_data['comment'].append(comment_content)
+        #     demisto.debug('Updated the entries (attachments and/or comments) of the remote system successfully')
+
+        if any(value is not None for value in changed_data.values()):
             demisto.debug('Sending update request to Splunk for notable {}, data: {}'.format(notable_id, changed_data))
             base_url = 'https://' + params['host'] + ':' + params['port'] + '/'
             try:
@@ -2453,7 +2531,7 @@ def kv_store_collection_add_entries(service: client.Service) -> None:
 
 def kv_store_collections_list(service: client.Service) -> None:
     app_name = service.namespace['app']
-    names = list([x.name for x in service.kvstore.iter()])
+    names = [x.name for x in service.kvstore.iter()]
     human_readable = "list of collection names {}\n| name |\n| --- |\n|{}|".format(app_name, '|\n|'.join(names))
     entry_context = {"Splunk.CollectionList": names}
     return_outputs(human_readable, entry_context, entry_context)
@@ -2548,7 +2626,7 @@ def get_key_type(kv_store: client.KVStoreCollection, _key: str):
 def get_keys_and_types(kv_store: client.KVStoreCollection) -> dict[str, str]:
     keys = kv_store.content()
     for key_name in list(keys.keys()):
-        if not (key_name.startswith('field.') or key_name.startswith('index.')):
+        if not (key_name.startswith(("field.", "index."))):
             del keys[key_name]
     return keys
 
@@ -2614,7 +2692,7 @@ def get_connection_args() -> dict:
 def main():  # pragma: no cover
     command = demisto.command()
     params = demisto.params()
-
+    demisto.debug(f'params: {params}')
     if command == 'splunk-parse-raw':
         splunk_parse_raw_command()
         sys.exit(0)
@@ -2714,6 +2792,7 @@ def main():  # pragma: no cover
                                 close_extra_labels=argToList(demisto.params().get('close_extra_labels', '')),
                                 mapper=mapper)
     elif command == 'get-modified-remote-data':
+        demisto.info('########### MIRROR IN #############')
         get_modified_remote_data_command(service, demisto.args())
     elif command == 'update-remote-system':
         demisto.info('########### MIRROR OUT #############')

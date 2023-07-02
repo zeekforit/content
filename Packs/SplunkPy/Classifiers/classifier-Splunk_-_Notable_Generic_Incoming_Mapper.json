@@ -108,6 +108,9 @@
                 "details": {
                     "simple": "rule_description"
                 },
+                "Splunk Comments": {
+                    "simple": "SplunkComments"
+                },
                 "name": {
                     "complex": {
                         "filters": [],
