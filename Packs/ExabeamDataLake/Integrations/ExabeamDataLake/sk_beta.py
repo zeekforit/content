@@ -1,137 +1,227 @@
-
+import demistomock as demisto
+from CommonServerPython import *
+from CommonServerUserPython import *
 import requests
-import json
-import dateutil.parser
-
-# Base URL
-baseURL = demisto.params()['url']
-VERIFY = not demisto.params().get('insecure', False)
-PROXIES = handle_proxy(proxy_param_name='proxy')  # Add this line to handle proxy settings
 
 
-# Handle proxy settings
-def handle_proxy(proxy_param_name):
-    proxy = demisto.params().get(proxy_param_name)
-    if not proxy:
-        return {}
-    proxies = {
-        "http": proxy,
-        "https": proxy
-    }
-    return proxies
+TOKEN_INPUT_IDENTIFIER = "__token"
 
-# Obtain access token
-def get_access_token():
-    url = f"{baseURL}/auth/v1/token"
-    payload = {
-        "grant_type": "client_credentials",
-        "client_id": demisto.params()['client_id'],
-        "client_secret": demisto.params()['client_secret']
-    }
-    headers = {
-        "accept": "application/json",
-        "content-type": "application/json"
-    }
-    response = requests.post(url, json=payload, headers=headers, verify=VERIFY, proxies=PROXIES)
-    if response.status_code != 200:
-        raise Exception(f'Failed to authenticate with Exabeam: {response.status_code}')
-    return response.json()["access_token"]
 
-def http_request(method, url_suffix, data=None):
-    headers = {
-        "accept": "application/json",
-        "content-type": "application/json",
-        "Authorization": f"Bearer {get_access_token()}"
-    }
-    response = requests.request(method, baseURL + url_suffix, json=data, headers=headers, verify=VERIFY, proxies=PROXIES)
-    if response.status_code != 200:
+class Client(BaseClient):
+    """
+    Client to use in the Exabeam integration. Overrides BaseClient
+    """
+
+    def __init__(
+        self,
+        base_url: str,
+        username: str,
+        password: str,
+        verify: bool,
+        proxy: bool,
+        headers,
+    ):
+        super().__init__(
+            base_url=f"{base_url}", headers=headers, verify=verify, proxy=proxy
+        )
+        self.username = username
+        self.password = password
+        self.session = requests.Session()
+        self.session.headers = headers
+        if not proxy:
+            self.session.trust_env = False
+        if self.username != TOKEN_INPUT_IDENTIFIER:
+            self._login()
+
+    def __del__(self):
+        if self.username != TOKEN_INPUT_IDENTIFIER:
+            self._logout()
+        super().__del__()
+
+    def _login(self):
+        """
+        Login using the credentials and store the cookie
+        """
+        self._http_request(
+            "POST",
+            full_url=f"{self._base_url}/api/auth/login",
+            data={"username": self.username, "password": self.password},
+        )
+
+    def _logout(self):
+        """
+        Logout from the session
+        """
         try:
-            message = response.json()['error']['message']
-        except (KeyError, ValueError):
-            message = response.text
-        raise Exception(f'Request to {url_suffix} failed with status code {response.status_code}: {message}')
-    return response.json()
+            self._http_request("GET", full_url=f"{self._base_url}/api/auth/logout")
+        except Exception as err:
+            demisto.debug(f"An error occurred during the logout.\n{str(err)}")
 
-# Search for events
-def search_events(filter_query, from_time_millis, end_time_millis, limit=10, distinct=False):
-    url_suffix = "/search/v2/events"
-    payload = {
-        "fields": ["*"],
-        "limit": limit,
-        "distinct": distinct,
-        "filter": filter_query,
-        "fromTimeMillis": from_time_millis,
-        "endTimeMillis": end_time_millis
-    }
-    return http_request("POST", url_suffix, data=payload)
+    def test_module_request(self):
+        """
+        Performs basic get request to check if the server is reachable.
+        """
+        self._http_request(
+            "GET", full_url=f"{self._base_url}/api/auth/check", resp_type="text"
+        )
 
-def search_events_command(args):
-    filter_query = args.get("filter")
-    from_time_millis = int(args.get("fromTimeMillis"))
-    end_time_millis = int(args.get("endTimeMillis"))
-    limit = int(args.get("limit", 3))
-    distinct = argToBoolean(args.get("distinct", False))
-    events = search_events(filter_query, from_time_millis, end_time_millis, limit, distinct)
 
-    if events and "rows" in events:
-        headers = list(events["rows"][0].keys()) if events["rows"] else []
-        hr = tableToMarkdown("Search Events Results", events["rows"], headers=headers, headerTransform=pascalToSpace)
-    else:
-        hr = "No events found"
+""" COMMANDS """
 
-    return_results(CommandResults(readable_output=hr, outputs_prefix="Exabeam.SearchEvents", outputs_key_field="id", outputs=events))
 
-# Fetch incidents
-def fetch_incidents(last_run, first_fetch_time):
-    last_fetch = last_run.get("last_fetch")
-    # if last_fetch is None:
-    #    last_fetch = dateutil.parser.parse(first_fetch_time).timestamp() * 1000
-    last_fetch = "1682906460910"
-    current_fetch = last_fetch
-    fetch_now_time = "1682904660910"
-    filter_query = demisto.params().get("filter_query_incidents")
-    limit = int(demisto.params().get("limit", 10))
+def test_module(client: Client, *_):
+    """test function
 
-    events = search_events(filter_query, fetch_now_time, last_fetch, limit)
+    Args:
+        client: Client
 
-    incidents = []
-    if events and "rows" in events:
-        for event in events["rows"]:
-            incident = {
-                "name": f'{event["id"]} - Testing',
-                #"occurred": event["timeCompletedMillis"],
-                "rawJSON": json.dumps(event)
+    Returns:
+        ok if successful
+    """
+    client.test_module_request()
+    demisto.results("ok")
+    return "", None, None
+
+
+def query_datalake(self, start_time: int = None, query: str = None):
+    """
+    Args:
+        query: query for search
+        start_time: start time to search for logs
+    Returns:
+        logs
+    """
+    query = demisto.args().get("query")
+    start_time = demisto.args().get("startTime")
+    {
+        "sort": [{"indexTime": "asc"}],
+        "query": {
+            "bool": {
+                "filter": {
+                    "bool": {"minimum_should_match": 1, "must_not": [], "should": []}
+                },
+                "must": {
+                    "bool": {
+                        "must_not": [],
+                        "must": [
+                            query,
+                            {
+                                "range": {
+                                    "indexTime": {
+                                        "gte": start_time * 1000,
+                                        "format": "epoch_millis",
+                                    }
+                                }
+                            },
+                        ],
+                    }
+                },
             }
-            incidents.append(incident)
+        },
+    }
+    headers = {"kbn-version": "5.1.1-SNAPSHOT", "Content-Type": "application/json"}
 
-            event_time = "1682904660910"
-            current_fetch = max(current_fetch, event_time)
+    params = {
+        "size": 200,
+        "sort": [{"indexTime": "asc"}],
+        "query": {
+            "bool": {
+                "filter": {
+                    "bool": {"minimum_should_match": 1, "must_not": [], "should": []}
+                },
+                "must": {
+                    "bool": {
+                        "must_not": [],
+                        "must": [
+                            query,
+                            {
+                                "range": {
+                                    "indexTime": {
+                                        "gte": start_time * 1000,
+                                        "format": "epoch_millis",
+                                    }
+                                }
+                            },
+                        ],
+                    }
+                },
+            }
+        },
+    }
+    params2 = json.dumps(params)
 
-    demisto.setLastRun({"last_fetch": current_fetch})
-    demisto.incidents(incidents)
+    # response = requests.post(full_url, params=params, headers=headers, timeout=120, verify=False, json=search_query)
 
-# Main function
+    response = self._http_request(
+        "POST",
+        full_url=f"{self._base_url}/dl/api/es/search",
+        params=params2,
+        headers=headers,
+        timeout=120,
+        resp_type="text",
+    )
+
+    if response != 200:
+        error = response.status_code
+        return error
+
+    if response == 200:
+        return response.json()["hits"]["hits"]
+    return None
+
+    # results = CommandResults(
+    # outputs_prefix='ExabeamDatalake',
+    # outputs_key_field="Logs",
+    # outputs = response
+    # )
+    # return_results(results)
+
+
 def main():
-    try:
-        command = demisto.command()
-        demisto.debug(f'Command being called is {command}')
+    """
+    PARSE AND VALIDATE INTEGRATION PARAMS
+    """
+    username = demisto.params().get("credentials").get("identifier")
+    password = demisto.params().get("credentials").get("password")
+    base_url = demisto.params().get("url")
+    verify_certificate = not demisto.params().get("insecure", False)
+    proxy = demisto.params().get("proxy", False)
+    headers = {"Accept": "application/json", "Csrf-Token": "nocheck"}
+    if username == TOKEN_INPUT_IDENTIFIER:
+        headers["ExaAuthToken"] = password
 
-        if command == 'test-module':
-            access_token = get_access_token()
-            if access_token:
-                return_results('ok')
-        elif command == 'exabeam-search-events':
-            search_events_command(demisto.args())
-        elif command == 'fetch-incidents':
-            last_run = demisto.getLastRun()
-            first_fetch_time = demisto.params().get("first_fetch", "2 hours")
-            fetch_incidents(last_run, first_fetch_time)
+    try:
+        client = Client(
+            base_url.rstrip("/"),
+            verify=verify_certificate,
+            username=username,
+            password=password,
+            proxy=proxy,
+            headers=headers,
+        )
+        command = demisto.command()
+        LOG(f"Command being called is {command}.")
+        if command == "test-module":
+            test_module(client)
         else:
-            raise NotImplementedError(f'Command "{command}" is not implemented.')
+            query_datalake(client)  # type: ignore
+        # else:
+        # raise NotImplementedError(f'Command "{command}" is not implemented.')
+
+    except DemistoException as err:
+        # some of the API error responses are not so clear, and the reason for the error is because of bad input.
+        # we concat here a message to the output to make sure
+        error_msg = str(err)
+        if err.res is not None and err.res.status_code == 500:
+            error_msg += (
+                "\nThe error might have occurred because of incorrect inputs. "
+                "Please make sure your arguments are set correctly."
+            )
+        return_error(error_msg)
 
     except Exception as err:
         return_error(str(err))
 
-if __name__ in ['__main__', '__builtin__', 'builtins']:
-    main()
 
+if __name__ in ["__main__", "builtin", "builtins"]:
+    main()

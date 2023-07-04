@@ -1,60 +1,185 @@
 import demistomock as demisto
-from CommonServerPython import *  # noqa # pylint: disable=unused-wildcard-import
+from CommonServerPython import *  # noqa
 from CommonServerUserPython import *  # noqa
 
-from typing import Any
 
+""" CONSTANTS """
 
-''' CONSTANTS '''
+DATE_FORMAT = "%Y-%m-%dT%H:%M:%SZ"  # ISO8601 format with UTC, default in XSOAR
+TOKEN_INPUT_IDENTIFIER = "__token"
 
-DATE_FORMAT = '%Y-%m-%dT%H:%M:%SZ'  # ISO8601 format with UTC, default in XSOAR
-
-''' CLIENT CLASS '''
+""" CLIENT CLASS """
 
 
 class Client(BaseClient):
-    """Client class to interact with the service API"""
-
-    def get_query(self, dummy: str) -> dict[str, str]:
-
-        return 
-
-
-''' COMMAND FUNCTIONS '''
-
-
-def query_command(client: Client, args: dict[str, Any]) -> CommandResults:
-    amount_results_to_get: int | bool
-    if not (amount_results_to_get := argToBoolean(args.get('all_results'))):
-        amount_results_to_get = args.get('limit', 50)
-
-
-def test_module(client: Client) -> str:
-    """Tests API connectivity and authentication'
-
-    Returning 'ok' indicates that the integration works like it is supposed to.
-    Connection to the service is successful.
-    Raises exceptions if something goes wrong.
-
-    :type client: ``Client``
-    :param Client: client to use
-
-    :return: 'ok' if test passed, anything else will fail the test.
-    :rtype: ``str``
+    """
+    Client to use in the Exabeam DataLake integration. Overrides BaseClient
     """
 
-    message: str = ''
-    try:
-        message = 'ok'
-    except DemistoException as e:
-        if 'Forbidden' in str(e) or 'Authorization' in str(e):  # TODO: make sure you capture authentication errors
-            message = 'Authorization Error: make sure API Key is correctly set'
-        else:
-            raise e
-    return message
+    def __init__(
+        self,
+        base_url: str,
+        username: str,
+        password: str,
+        verify: bool,
+        proxy: bool,
+        headers,
+        api_key: str = "",
+    ):
+        super().__init__(
+            base_url=f"{base_url}", headers=headers, verify=verify, proxy=proxy
+        )
+        self.username = username
+        self.password = password
+        self.api_key = api_key
+        self.session = requests.Session()
+        self.session.headers = headers
+        if not proxy:
+            self.session.trust_env = False
+        if self.username != TOKEN_INPUT_IDENTIFIER:
+            self._login()
+
+        if self.username != TOKEN_INPUT_IDENTIFIER:
+            self._logout()
+        super().__del__()
+
+    def _login(self):
+        """
+        Login using the credentials and store the cookie
+        """
+        self._http_request(
+            "POST",
+            full_url=f"{self._base_url}/api/auth/login",
+            data={"username": self.username, "password": self.password},
+        )
+
+    def _logout(self):
+        """
+        Logout from the session
+        """
+        try:
+            self._http_request("GET", full_url=f"{self._base_url}/api/auth/logout")
+        except Exception as err:
+            demisto.debug(f"An error occurred during the logout.\n{str(err)}")
+
+    def test_module_request(self):
+        """
+        Performs basic get request to check if the server is reachable.
+        """
+        self._http_request('GET', full_url=f'{self._base_url}/api/auth/check', resp_type='text')
 
 
-''' MAIN FUNCTION '''
+""" COMMAND FUNCTIONS """
+
+
+def query_datalake_command(self, start_time: int = None, query: str = None):
+    """
+    Args:
+        query: query for search
+        start_time: start time to search for logs
+    Returns:
+        logs
+    """
+    query = demisto.args().get("query")
+    start_time = demisto.args().get("startTime")
+    {
+        "sort": [{"indexTime": "asc"}],
+        "query": {
+            "bool": {
+                "filter": {
+                    "bool": {"minimum_should_match": 1, "must_not": [], "should": []}
+                },
+                "must": {
+                    "bool": {
+                        "must_not": [],
+                        "must": [
+                            query,
+                            {
+                                "range": {
+                                    "indexTime": {
+                                        "gte": start_time * 1000,
+                                        "format": "epoch_millis",
+                                    }
+                                }
+                            },
+                        ],
+                    }
+                },
+            }
+        },
+    }
+    headers = {"kbn-version": "5.1.1-SNAPSHOT", "Content-Type": "application/json"}
+
+    params = {
+        "size": 200,
+        "sort": [{"indexTime": "asc"}],
+        "query": {
+            "bool": {
+                "filter": {
+                    "bool": {"minimum_should_match": 1, "must_not": [], "should": []}
+                },
+                "must": {
+                    "bool": {
+                        "must_not": [],
+                        "must": [
+                            query,
+                            {
+                                "range": {
+                                    "indexTime": {
+                                        "gte": start_time * 1000,
+                                        "format": "epoch_millis",
+                                    }
+                                }
+                            },
+                        ],
+                    }
+                },
+            }
+        },
+    }
+    params2 = json.dumps(params)
+
+    # response = requests.post(full_url, params=params, headers=headers, timeout=120, verify=False, json=search_query)
+
+    response = self._http_request(
+        "POST",
+        full_url=f"{self._base_url}/dl/api/es/search",
+        params=params2,
+        headers=headers,
+        timeout=120,
+        resp_type="text",
+    )
+
+    if response != 200:
+        error = response.status_code
+        return error
+
+    if response == 200:
+        return response.json()["hits"]["hits"]
+    return None
+
+    # results = CommandResults(
+    # outputs_prefix='ExabeamDatalake',
+    # outputs_key_field="Logs",
+    # outputs = response
+    # )
+    # return_results(results)
+
+
+def test_module(client: Client):
+    """test function
+
+    Args:
+        client: Client
+
+    Returns:
+        ok if successful
+    """
+    client.test_module_request()
+    demisto.results('ok')
+
+
+""" MAIN FUNCTION """
 
 
 def main() -> None:
@@ -66,42 +191,35 @@ def main() -> None:
     params = demisto.params()
     args = demisto.args()
     command = demisto.command()
-    user_name = params.get('credentials', {}).get('identifier')
-    password = params.get('credentials', {}).get('password')
 
-    base_url = params['url']
+    username = params.get("credentials", {}).get("identifier")
+    password = params.get("credentials", {}).get("password")
+    base_url = params["url"].rstrip('/')
 
-    verify_certificate = not params.get('insecure', False)
+    verify_certificate = not params.get("insecure", False)
 
-    proxy = params.get('proxy', False)
+    proxy = params.get("proxy", False)
 
-    demisto.debug(f'Command being called is {command}')
+    demisto.debug(f"Command being called is {command}")
+    headers = {'Accept': 'application/json', 'Csrf-Token': 'nocheck'}
+    if username == TOKEN_INPUT_IDENTIFIER:
+        headers["ExaAuthToken"] = password
     try:
-
-        # TODO: Make sure you add the proper headers for authentication
-        # (i.e. "Authorization": {api key})
-        headers: dict = {}
-
-        client = Client(
-            base_url=base_url,
-            verify=verify_certificate,
-            headers=headers,
-            proxy=proxy)
+        client = Client(base_url, verify=verify_certificate, username=username,
+                        password=password, proxy=proxy, headers=headers)
+        command = demisto.command()
 
         match command:
-            case 'test-module':
+            case "test-module":
                 return_results(test_module(client))
-            case 'exabeam-data-lake-query':
-                return_results(query_command(client, args))
+            case "exabeam-data-lake-query":
+                return_results(query_datalake_command(client, args))
             case _:
                 raise NotImplementedError(f"Command {command} is not supported")
 
     except Exception as e:
-        return_error(f'Failed to execute {command} command.\nError:\n{str(e)}')
+        return_error(f"Failed to execute {command} command.\nError:\n{str(e)}")
 
 
-''' ENTRY POINT '''
-
-
-if __name__ in ('__main__', '__builtin__', 'builtins'):
+if __name__ in ("__main__", "__builtin__", "builtins"):
     main()
