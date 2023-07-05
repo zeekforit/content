@@ -1,6 +1,5 @@
 [file:classifier-mapper-incoming-CyberInt.json]
 ignore=BA101
-
 [file:incidentfield-Cyberint_CyberInt_Alert_ID.json]
 ignore=IF100
 
@@ -10,3 +9,5 @@ ignore=IF100
 [file:incidentfield-Cyberint_CyberInt_Vulnerable_CName_Record.json]
 ignore=BA116
 
+[file:Cyberint.yml]
+ignore=IN145

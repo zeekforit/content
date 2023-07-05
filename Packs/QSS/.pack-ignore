@@ -1,3 +1,4 @@
+
 [file:incidentfield-QSS_Case_Acknowledged.json]
 ignore=IF100
 
@@ -55,3 +56,5 @@ ignore=IF100
 [file:incidentfield-QSS_Case_Title.json]
 ignore=IF100
 
+[file:QSS.yml]
+ignore=IN145

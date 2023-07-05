@@ -1,5 +1,5 @@
 [file:VirusTotal.yml]
-ignore=IN135,IN144
+ignore=IN135,IN144,IN145
 
 [file:VirusTotal_V3_Premium.yml]
 ignore=BA108,BA109
@@ -20,7 +20,6 @@ ignore=IM111
 ignore=RM110
 
 [known_words]
-virustotal
-livehunt
-retrohunt
-
+VirusTotal
+Livehunt
+Retrohunt

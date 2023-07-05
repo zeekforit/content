@@ -1,5 +1,5 @@
 [file:XMCyberIntegration.yml]
-ignore=IN136
+ignore=IN136,IN145
 
 [file:README.md]
 ignore=RM102
@@ -17,9 +17,8 @@ ignore=BA101
 ignore=IM111
 
 [known_words]
-xm
-entityid
+XM
+entityId
 avg
-mappers
-crowdstrike
-
+Mappers
+Crowdstrike

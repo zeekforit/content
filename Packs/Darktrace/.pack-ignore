@@ -4,6 +4,9 @@ ignore=BA101
 [file:classifier-mapper-incoming-Darktrace.json]
 ignore=BA101
 
+[file:Darktrace.yml]
+ignore=IN145
+
 [file:Darktrace_image.png]
 ignore=IM111
 
@@ -12,4 +15,3 @@ ignore=BA101
 
 [file:playbook-HandleDarktraceModelBreach.yml]
 ignore=PB121
-

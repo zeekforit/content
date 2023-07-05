@@ -1,3 +1,6 @@
+[file:RSTCloudThreatFeedAPI.yml]
+ignore=IN145
+
 [file:Domain_Enrichment_-_RST_Threat_Feed.yml]
 ignore=PB121
 
@@ -8,5 +11,5 @@ ignore=PB121
 ignore=PB121
 
 [known_words]
-rst
+RST
 

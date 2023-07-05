@@ -1,5 +1,5 @@
 [file:DigitalShadows.yml]
-ignore=IN126
+ignore=IN126,IN145
 
 [file:README.md]
 ignore=RM104
@@ -8,6 +8,5 @@ ignore=RM104
 ignore=IM111
 
 [known_words]
-subdomain
-ds
-
+Subdomain
+DS

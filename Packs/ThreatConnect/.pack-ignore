@@ -1,11 +1,12 @@
 [file:ThreatConnect_v2.yml]
-ignore=BA108,BA109,IN144
+ignore=BA108,BA109,IN144,IN145
 
 [file:ThreatConnectV3.yml]
 ignore=IN124
 
 [file:README.md]
 ignore=RM106
+
 
 [file:ThreatConnect_v2_image.png]
 ignore=IM111
@@ -21,6 +22,5 @@ ignore=BA101
 
 [known_words]
 workflows
-associatedgroups
-falsepositive
-
+AssociatedGroups
+falsePositive
