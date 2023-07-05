@@ -68,20 +68,74 @@ class Client(BaseClient):
         """
         self._http_request('GET', full_url=f'{self._base_url}/api/auth/check', resp_type='text')
 
+    def query_datalake_request(self, query: str, start_time: int, end_time: int, limit: int, all_result: bool):
+        """
+        Args:
+            query: query to search
+            start_time: start time in epoch
+            end_time: end time in epoch
+            limit: limit of results
+            all_result: get all results or not
+        Returns:
+            logs
+        """
+        headers = {"kbn-version": "5.1.1-SNAPSHOT", "Content-Type": "application/json"}
+
+        params = {
+            "size": 200,
+            "sort": [{"indexTime": "asc"}],
+            "query": {
+                "bool": {
+                    "filter": {
+                        "bool": {"minimum_should_match": 1, "must_not": [], "should": []}
+                    },
+                    "must": {
+                        "bool": {
+                            "must_not": [],
+                            "must": [
+                                query,
+                                {
+                                    "range": {
+                                        "indexTime": {
+                                            "gte": start_time * 1000,
+                                            "format": "epoch_millis",
+                                        }
+                                    }
+                                },
+                            ],
+                        }
+                    },
+                }
+            },
+        }
+
+        if all_result:
+            params["size"] = 10000
+
+        return self._http_request(
+            "POST",
+            full_url=f"{self._base_url}/api/datalake/search",
+            headers=headers,
+            params=params,
+        )
+
 
 """ COMMAND FUNCTIONS """
 
 
-def query_datalake_command(self, start_time: int = None, query: str = None):
+def query_datalake_command(self, args: dict) -> CommandResults:
     """
     Args:
-        query: query for search
-        start_time: start time to search for logs
+        args: demisto.args()
     Returns:
         logs
     """
-    query = demisto.args().get("query")
-    start_time = demisto.args().get("startTime")
+    query = args["query"]
+    start_time = args.get("start_time")
+    end_time = args.get("end_time")
+    limit = int(args.get("limit", 50))
+    all_result = argToBoolean(args.get("all_result", False))
+
     {
         "sort": [{"indexTime": "asc"}],
         "query": {
@@ -150,20 +204,12 @@ def query_datalake_command(self, start_time: int = None, query: str = None):
         resp_type="text",
     )
 
-    if response != 200:
-        error = response.status_code
-        return error
+    response = response.json()["hits"]["hits"]
 
-    if response == 200:
-        return response.json()["hits"]["hits"]
-    return None
-
-    # results = CommandResults(
-    # outputs_prefix='ExabeamDatalake',
-    # outputs_key_field="Logs",
-    # outputs = response
-    # )
-    # return_results(results)
+    return CommandResults(
+        outputs_prefix='ExabeamDataLake.Log',
+        outputs=response
+    )
 
 
 def test_module(client: Client):
@@ -192,8 +238,8 @@ def main() -> None:
     args = demisto.args()
     command = demisto.command()
 
-    username = params.get("credentials", {}).get("identifier")
-    password = params.get("credentials", {}).get("password")
+    username = params["credentials"]["identifier"]
+    password = params["credentials"]["password"]
     base_url = params["url"].rstrip('/')
 
     verify_certificate = not params.get("insecure", False)
@@ -202,12 +248,12 @@ def main() -> None:
 
     demisto.debug(f"Command being called is {command}")
     headers = {'Accept': 'application/json', 'Csrf-Token': 'nocheck'}
+
     if username == TOKEN_INPUT_IDENTIFIER:
         headers["ExaAuthToken"] = password
     try:
         client = Client(base_url, verify=verify_certificate, username=username,
                         password=password, proxy=proxy, headers=headers)
-        command = demisto.command()
 
         match command:
             case "test-module":

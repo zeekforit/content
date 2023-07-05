@@ -26,6 +26,12 @@ name: Exabeam Data Lake_copy
 script:
   commands:
   - arguments:
+    - description: '[Enter a description of the argument, including any important information users need to know, for example, default values.]'
+      name: query
+    - description: '[Enter a description of the argument, including any important information users need to know, for example, default values.]'
+      name: start_time
+    - description: '[Enter a description of the argument, including any important information users need to know, for example, default values.]'
+      name: end_time
     - defaultValue: '50'
       description: '[Enter a description of the argument, including any important information users need to know, for example, default values.]'
       name: limit
@@ -36,9 +42,7 @@ script:
       predefined:
       - true
       - false
-    deprecated: false
     description: '[Enter a description of the command, including any important information users need to know, for example required permissions.]'
-    execution: false
     name: exabeam-data-lake-query
     outputs:
     - contextPath: BaseIntegration.Output

@@ -1,6 +1,6 @@
 import demistomock as demisto
-from CommonServerPython import *
-from CommonServerUserPython import *
+from CommonServerPython import *  # noqa
+from CommonServerUserPython import *  # noqa
 import requests
 
 
@@ -93,7 +93,7 @@ def query_datalake(self, start_time: int = None, query: str = None):
     """
     query = demisto.args().get("query")
     start_time = demisto.args().get("startTime")
-    {
+    search_query = {
         "sort": [{"indexTime": "asc"}],
         "query": {
             "bool": {
@@ -167,14 +167,13 @@ def query_datalake(self, start_time: int = None, query: str = None):
 
     if response == 200:
         return response.json()["hits"]["hits"]
-    return None
 
-    # results = CommandResults(
-    # outputs_prefix='ExabeamDatalake',
-    # outputs_key_field="Logs",
-    # outputs = response
-    # )
-    # return_results(results)
+        # results = CommandResults(
+        # outputs_prefix='ExabeamDatalake',
+        # outputs_key_field="Logs",
+        # outputs = response
+        # )
+        # return_results(results)
 
 
 def main():
@@ -189,6 +188,8 @@ def main():
     headers = {"Accept": "application/json", "Csrf-Token": "nocheck"}
     if username == TOKEN_INPUT_IDENTIFIER:
         headers["ExaAuthToken"] = password
+
+    commands = {"test-module": test_module, "exabeam-datalake-query": query_datalake}
 
     try:
         client = Client(
