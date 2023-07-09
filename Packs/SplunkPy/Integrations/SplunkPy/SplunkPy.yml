@@ -626,6 +626,9 @@ script:
     - contextPath: Splunk.UserMapping.SplunkUser
       description: Splunk user mapping.
       type: String
+  - deprecated: false
+    description: Updates the remote incident with local incident changes. This method is only used for debugging purposes and will not update the current incident.
+    name: update-remote-system
   dockerimage: demisto/splunksdk-py3:1.0.0.62919
   isfetch: true
   ismappable: true

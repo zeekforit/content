@@ -3,11 +3,11 @@ args:
   name: comment
   required: true
 - auto: PREDEFINED
-  defaultValue: comment tag
+  defaultValue: FROM XSOAR
   description: The comment tag. Use the comment entry tag (defined in your instance configuration) to mirror the comment to Splunk.
   name: tags
   predefined:
-  - comment tag
+  - FROM XSOAR
   required: false
   isArray: true
 comment: Use this script to add a comment with a tag (the "Comment tag to Splunk" defined in the instance configuration) as an entry in XSOAR, which will then be mirrored as a comment to a Splunk issue. This script should be run within an incident.

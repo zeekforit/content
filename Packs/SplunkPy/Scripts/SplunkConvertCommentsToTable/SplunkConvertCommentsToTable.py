@@ -11,24 +11,22 @@ def main():
                          "from context but returned None")
     fields = incident.get('CustomFields', [])
     if fields:
-        splunkComments = json.loads(fields.get('SplunkComments', []))
+        splunkComments_str = fields.get('SplunkComments', [])
+        for data in splunkComments_str:
+            parsed_data = json.loads(data)
+            splunkComments.append(parsed_data)
         demisto.debug(f"{fields} \n\n\n SplunkComments: {splunkComments} \n\n\n {type(splunkComments)}")
-    # labels = incident.get('labels', [])
-    # demisto.debug(labels)
-    # incident_comments = []
-    # for label in labels:
-    #     if label.get('type') == 'SplunkComments':
-    #         incident_comments = json.loads(label.get('value', []))
-    #         demisto.debug(incident_comments)
+
     if not splunkComments:
         return CommandResults(readable_output='No comments were found in the notable')
 
-    # incident_comments.append(splunkComments)
-    # demisto.debug(f"incident_comments: {incident_comments}")
     markdown = tableToMarkdown("", splunkComments, headers=['Comment', 'Comment time', 'Reviwer'])
     demisto.debug(f"markdown {markdown}")
 
-    return {'ContentsFormat': formats['markdown'], 'Type': entryTypes['note'], 'Contents': markdown}
+    return CommandResults(
+        readable_output=markdown
+    )
+    # return {'ContentsFormat': formats['markdown'], 'Type': entryTypes['note'], 'Contents': markdown}
 
 
 if __name__ in ('__main__', '__builtin__', 'builtins'):

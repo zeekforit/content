@@ -24,7 +24,7 @@
     "sla": 0,
     "system": false,
     "threshold": 72,
-    "type": "longText",
+    "type": "multiSelect",
     "unmapped": false,
     "unsearchable": false,
     "useAsKpi": false,
