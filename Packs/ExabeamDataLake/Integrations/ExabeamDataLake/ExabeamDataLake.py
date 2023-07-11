@@ -130,38 +130,12 @@ def query_datalake_command(self, args: dict) -> CommandResults:
     Returns:
         logs
     """
-    query = args["query"]
+    query = args.get("query")
     start_time = args.get("start_time")
     end_time = args.get("end_time")
     limit = int(args.get("limit", 50))
     all_result = argToBoolean(args.get("all_result", False))
 
-    {
-        "sort": [{"indexTime": "asc"}],
-        "query": {
-            "bool": {
-                "filter": {
-                    "bool": {"minimum_should_match": 1, "must_not": [], "should": []}
-                },
-                "must": {
-                    "bool": {
-                        "must_not": [],
-                        "must": [
-                            query,
-                            {
-                                "range": {
-                                    "indexTime": {
-                                        "gte": start_time * 1000,
-                                        "format": "epoch_millis",
-                                    }
-                                }
-                            },
-                        ],
-                    }
-                },
-            }
-        },
-    }
     headers = {"kbn-version": "5.1.1-SNAPSHOT", "Content-Type": "application/json"}
 
     params = {
@@ -180,7 +154,7 @@ def query_datalake_command(self, args: dict) -> CommandResults:
                             {
                                 "range": {
                                     "indexTime": {
-                                        "gte": start_time * 1000,
+                                        "gte": 1000,
                                         "format": "epoch_millis",
                                     }
                                 }
@@ -237,7 +211,6 @@ def main() -> None:
     params = demisto.params()
     args = demisto.args()
     command = demisto.command()
-
     username = params["credentials"]["identifier"]
     password = params["credentials"]["password"]
     base_url = params["url"].rstrip('/')
