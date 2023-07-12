@@ -40,8 +40,6 @@ DEFAULT_DISPOSITIONS = {
     'Other': 'disposition:5',
     'Undetermined': 'disposition:6'
 }
-COMMENT_TAG_FROM_SPLUNK = 'FROM SPLUNK'
-COMMENT_TAG_FROM_XSOAR = 'FROM XSOAR'
 COMMENT_MIRRORED_FROM_XSOAR = 'Mirrored from Cortex XSOAR'
 
 # =========== Mirroring Mechanism Globals ===========
@@ -332,7 +330,8 @@ def build_fetch_query(dem_params):
     return fetch_query
 
 
-def fetch_notables(service: client.Service, mapper: UserMappingObject, cache_object: "Cache" = None, enrich_notables=False):
+def fetch_notables(service: client.Service, mapper: UserMappingObject, comment_tag_to_splunk: str, comment_tag_from_splunk: str,
+                   cache_object: "Cache" = None, enrich_notables=False):
     last_run_data = demisto.getLastRun()
     if not last_run_data:
         extensive_log('[SplunkPy] SplunkPy first run')
@@ -368,7 +367,7 @@ def fetch_notables(service: client.Service, mapper: UserMappingObject, cache_obj
     for item in reader:
         extensive_log(f'[SplunkPy] Incident data before parsing to notable: {item}')
         notable_incident = Notable(data=item)
-        inc = notable_incident.to_incident(mapper)
+        inc = notable_incident.to_incident(mapper, comment_tag_to_splunk, comment_tag_from_splunk)
         extensive_log(f'[SplunkPy] Incident data after parsing to notable: {inc}')
         incident_id = create_incident_custom_id(inc)
 
@@ -431,8 +430,7 @@ def fetch_notables(service: client.Service, mapper: UserMappingObject, cache_obj
     demisto.setLastRun(last_run_data)
 
 
-def fetch_incidents(service: client.Service, mapper: UserMappingObject):
-    demisto.debug(f'PPPPP: {demisto.params()}')
+def fetch_incidents(service: client.Service, mapper: UserMappingObject, comment_tag_to_splunk: str, comment_tag_from_splunk: str):
     if ENABLED_ENRICHMENTS:
         integration_context = get_integration_context()
         if not demisto.getLastRun() and integration_context:
@@ -441,9 +439,10 @@ def fetch_incidents(service: client.Service, mapper: UserMappingObject):
             # in the last run object to avoid entering this case
             fetch_incidents_for_mapping(integration_context)
         else:
-            run_enrichment_mechanism(service, integration_context, mapper)
+            run_enrichment_mechanism(service, integration_context, mapper, comment_tag_to_splunk, comment_tag_from_splunk)
     else:
-        fetch_notables(service=service, enrich_notables=False, mapper=mapper)
+        fetch_notables(service=service, enrich_notables=False, mapper=mapper,
+                       comment_tag_to_splunk=comment_tag_to_splunk, comment_tag_from_splunk=comment_tag_from_splunk)
 
 
 # =========== Regular Fetch Mechanism ===========
@@ -548,7 +547,8 @@ class Notable:
                 return None
 
     @staticmethod
-    def create_incident(notable_data, occurred, mapper: UserMappingObject):
+    def create_incident(notable_data, occurred, mapper: UserMappingObject, comment_tag_to_splunk: str,
+                        comment_tag_from_splunk: str):
         incident = {}  # type: Dict[str,Any]
         rule_title, rule_name = '', ''
 
@@ -557,7 +557,6 @@ class Notable:
         if demisto.get(notable_data, 'rule_name'):
             rule_name = notable_data['rule_name']
         incident["name"] = f"{rule_title} : {rule_name}"
-
         if demisto.get(notable_data, 'urgency'):
             incident["severity"] = severity_to_level(notable_data['urgency'])
         if demisto.get(notable_data, 'rule_description'):
@@ -570,7 +569,8 @@ class Notable:
         notable_data = parse_notable(notable_data)
         notable_data.update({
             'mirror_instance': demisto.integrationInstance(),
-            'mirror_direction': MIRROR_DIRECTION.get(demisto.params().get('mirror_direction'))
+            'mirror_direction': MIRROR_DIRECTION.get(demisto.params().get('mirror_direction')),
+            'mirror_tags': [comment_tag_to_splunk, comment_tag_from_splunk]
         })
         incident["rawJSON"] = json.dumps(notable_data)
         comment_entries = []
@@ -611,7 +611,7 @@ class Notable:
 
         return incident
 
-    def to_incident(self, mapper: UserMappingObject):
+    def to_incident(self, mapper: UserMappingObject, comment_tag_to_splunk: str, comment_tag_from_splunk: str):
         """ Gathers all data from all notable's enrichments and return an incident """
         self.incident_created = True
 
@@ -619,7 +619,8 @@ class Notable:
             self.data[e.type] = e.data
             self.data[ENRICHMENT_TYPE_TO_ENRICHMENT_STATUS[e.type]] = e.status == Enrichment.SUCCESSFUL
 
-        return self.create_incident(self.data, self.occurred, mapper=mapper)
+        return self.create_incident(self.data, self.occurred, mapper=mapper, comment_tag_to_splunk=comment_tag_to_splunk,
+                                    comment_tag_from_splunk=comment_tag_from_splunk)
 
     def submitted(self):
         """ Returns an indicator on whether any of the notable's enrichments was submitted or not """
@@ -1155,7 +1156,8 @@ def submit_notable(service: client.Service, notable: Notable, num_enrichment_eve
     return notable.submitted()
 
 
-def run_enrichment_mechanism(service: client.Service, integration_context, mapper: UserMappingObject):
+def run_enrichment_mechanism(service: client.Service, integration_context, mapper: UserMappingObject, comment_tag_to_splunk: str,
+                             comment_tag_from_splunk: str):
     """ Execute the enriching fetch mechanism
     1. We first handle submitted notables that have not been handled in the last fetch run
     2. If we finished handling and submitting all fetched notables, we fetch new notables
@@ -1173,7 +1175,8 @@ def run_enrichment_mechanism(service: client.Service, integration_context, mappe
     try:
         handle_submitted_notables(service, incidents, cache_object, mapper)
         if cache_object.done_submitting() and cache_object.done_handling():
-            fetch_notables(service=service, cache_object=cache_object, enrich_notables=True, mapper=mapper)
+            fetch_notables(service=service, cache_object=cache_object, enrich_notables=True, mapper=mapper,
+                           comment_tag_to_splunk=comment_tag_to_splunk, comment_tag_from_splunk=comment_tag_from_splunk)
         submit_notables(service, incidents, cache_object, mapper)
 
     except Exception as e:
@@ -1256,7 +1259,8 @@ def get_last_update_in_splunk_time(last_update):
 
 
 def get_remote_data_command(service: client.Service, args: dict,
-                            close_incident: bool, close_end_statuses: bool, close_extra_labels: list[str], mapper):
+                            close_incident: bool, close_end_statuses: bool, close_extra_labels: list[str], mapper,
+                            comment_tag_from_splunk: str):
     """ get-remote-data command: Returns an updated notable and error entry (if needed)
 
     Args:
@@ -1266,6 +1270,7 @@ def get_remote_data_command(service: client.Service, args: dict,
             has been closed on Splunk's end.
         close_end_statuses (bool): Specifies whether "End Status" statuses on Splunk should be closed when mirroring.
         close_extra_labels (list[str]): A list of additional Splunk status labels to close during mirroring.
+        comment_tag_from_splunk (str): The comment tag to add to an entry to mirror it as a comment from Splunk.
 
     Returns:
         GetRemoteDataResponse: The Response containing the update notable to mirror and the entries
@@ -1284,7 +1289,6 @@ def get_remote_data_command(service: client.Service, args: dict,
     demisto.debug(f'Performing get-remote-data command with query: {search}')
 
     for item in results.ResultsReader(service.jobs.oneshot(search)):
-        demisto.debug(f" item : {item}")
         updated_notable = parse_notable(item, to_dict=True)
 
     if updated_notable.get('owner'):
@@ -1307,7 +1311,7 @@ def get_remote_data_command(service: client.Service, args: dict,
             f"last= {last_update_splunk_timestamp}")
         for comment, reviewer, review_time in zip(comments, reviewers, review_times):
             comment_entries.append({
-                'Comment': comment.replace(COMMENT_MIRRORED_FROM_XSOAR, "") if COMMENT_MIRRORED_FROM_XSOAR in comment else comment,
+                'Comment': comment,
                 'Comment time': review_time,
                 'Reviwer': reviewer
             })
@@ -1322,14 +1326,12 @@ def get_remote_data_command(service: client.Service, args: dict,
                     'Type': EntryType.NOTE,
                     'Contents': comment,
                     'ContentsFormat': EntryFormat.TEXT,
-                    'Tags': [COMMENT_TAG_FROM_SPLUNK],  # The list of tags to add to the entry
+                    'Tags': [comment_tag_from_splunk],  # The list of tags to add to the entry
                     'Note': True,
                 })
                 demisto.debug(f'update comment-{comment}')
         if comment_entries:
             updated_notable['SplunkComments'] = comment_entries
-            # demisto.debug(f"before labels-{updated_notable['labels']}")
-            # updated_notable['labels'].append(({'type': 'splunkComments', 'value': str(comment_entries)}))
 
     demisto.debug(f'notable {notable_id} data: {updated_notable}')
     if close_incident and updated_notable.get('status_label'):
@@ -1351,7 +1353,7 @@ def get_remote_data_command(service: client.Service, args: dict,
         demisto.debug('"status_label" key could not be found on the returned data, '
                       f'skipping closure mirror for notable {notable_id}.')
 
-    demisto.debug(f'Updated notable {updated_notable}')
+    demisto.debug(f'Updated notable {notable_id}')
     return_results(GetRemoteDataResponse(mirrored_object=updated_notable, entries=entries))
 
 
@@ -1382,7 +1384,7 @@ def get_modified_remote_data_command(service: client.Service, args):
     return_results(GetModifiedRemoteDataResponse(modified_incident_ids=modified_notable_ids))
 
 
-def update_remote_system_command(args, params, service: client.Service, auth_token, mapper):
+def update_remote_system_command(args, params, service: client.Service, auth_token, mapper, comment_tag_to_splunk):
     """ Pushes changes in XSOAR incident into the corresponding notable event in Splunk Server.
 
     Args:
@@ -1390,19 +1392,21 @@ def update_remote_system_command(args, params, service: client.Service, auth_tok
         params (dict): Demisto params
         service (splunklib.client.Service): Splunk service object
         auth_token (str) - The authentication token to use
+        comment_tag_to_splunk (str): The comment tag to add to an entry to mirror it as a comment in Splunk.
 
     Returns:
         notable_id (str): The notable id
     """
-    demisto.debug(f'start mirroring out :{args}')
     parsed_args = UpdateRemoteSystemArgs(args)
     demisto.debug(
         f"parsed_args, data= {parsed_args.data},\n delta={parsed_args.delta}\n entries={parsed_args.entries},\n ",
         f"incident_changed={parsed_args.incident_changed}")
     delta = parsed_args.delta
     notable_id = parsed_args.remote_incident_id
+    entries = parsed_args.entries
+    base_url = 'https://' + params['host'] + ':' + params['port'] + '/'
 
-    if parsed_args.incident_changed and delta:
+    if (parsed_args.incident_changed and delta):
         demisto.debug('Got the following delta keys {} to update incident corresponding to notable '
                       '{}'.format(str(list(delta.keys())), notable_id))
         changed_data = {field: None for field in OUTGOING_MIRRORED_FIELDS}
@@ -1418,23 +1422,17 @@ def update_remote_system_command(args, params, service: client.Service, auth_tok
         if parsed_args.inc_status == IncidentStatus.DONE and params.get('close_notable'):
             demisto.debug(f'Closing notable {notable_id}')
             changed_data['status'] = '5'  # type: ignore
-        new_comments: List[str] = []
-        if changed_data['comment']:
-            for comment in changed_data['comment']:
-                comment_data = json.loads(comment)
-                demisto.debug(f"new_comments: {comment_data}")
-                if COMMENT_TAG_FROM_XSOAR in comment_data.get('Tag', []):
-                    new_comments.append(f"{comment_data.get('Comment')}\n\n{COMMENT_MIRRORED_FROM_XSOAR}")
-            changed_data['comment'] = new_comments
-        if any(value is not None and value != 'None' for value in changed_data.values()):
-            demisto.debug('Sending update request to Splunk for notable {}, data: {}'.format(notable_id, changed_data))
+
+        if any(changed_data.values()):
+            demisto.debug(f'Sending update request to Splunk for notable {notable_id}, data: {changed_data}')
             base_url = 'https://' + params['host'] + ':' + params['port'] + '/'
             try:
                 session_key = get_auth_session_key(service) if not auth_token else None
                 response_info = update_notable_events(
                     baseurl=base_url, comment=changed_data['comment'], status=changed_data['status'],
                     urgency=changed_data['urgency'], owner=changed_data['owner'], eventIDs=[notable_id],
-                    disposition=changed_data.get('disposition'), auth_token=auth_token, sessionKey=session_key)
+                    disposition=changed_data.get('disposition'), auth_token=auth_token, sessionKey=session_key
+                )
                 if 'success' not in response_info or not response_info['success']:
                     demisto.error(f'Failed updating notable {notable_id}: {str(response_info)}')
                 else:
@@ -1450,6 +1448,27 @@ def update_remote_system_command(args, params, service: client.Service, auth_tok
     else:
         demisto.debug(f'Incident corresponding to notable {notable_id} was not changed.')
 
+    if entries:
+        for entry in entries:
+            entry_tags = entry.get('tags', [])
+            demisto.debug(f'Got the entry tags: {entry_tags}')
+            if comment_tag_to_splunk in entry_tags:
+                demisto.debug('Add new comment')
+                comment_body = f'{entry.get("contents", "")}\n{COMMENT_MIRRORED_FROM_XSOAR}'
+                demisto.debug(f"will update comment: {comment_body}")
+                try:
+                    session_key = get_auth_session_key(service) if not auth_token else None
+                    response_info = update_notable_events(
+                        baseurl=base_url, comment=comment_body, auth_token=auth_token, sessionKey=session_key,
+                        eventIDs=[notable_id])
+                    if 'success' not in response_info or not response_info['success']:
+                        demisto.error(f'Failed updating notable {notable_id}: {str(response_info)}')
+                    else:
+                        demisto.debug('update-remote-system for notable {}: {}'
+                                      .format(notable_id, response_info.get('message')))
+                except Exception as e:
+                    demisto.error('Error in Splunk outgoing mirror for incident corresponding to notable {}. '
+                                  'Error message: {}'.format(notable_id, str(e)))
     return notable_id
 
 
@@ -1475,7 +1494,7 @@ def create_mapping_dict(total_parsed_results, type_field):
     return types_map
 
 
-def get_mapping_fields_command(service: client.Service, mapper):
+def get_mapping_fields_command(service: client.Service, mapper, comment_tag_to_splunk: str, comment_tag_from_splunk: str):
     # Create the query to get unique objects
     # The logic is identical to the 'fetch_incidents' command
     type_field = demisto.params().get('type_field', 'source')
@@ -1519,8 +1538,8 @@ def get_mapping_fields_command(service: client.Service, mapper):
     reader = results.ResultsReader(oneshotsearch_results)
     for item in reader:
         notable = Notable(data=item)
-        total_parsed_results.append(notable.to_incident(mapper))
-    demisto.debug(f"total_parsed_results:{total_parsed_results}")
+        total_parsed_results.append(notable.to_incident(mapper, comment_tag_to_splunk, comment_tag_from_splunk))
+
     types_map = create_mapping_dict(total_parsed_results, type_field)
     demisto.results(types_map)
 
@@ -1896,7 +1915,7 @@ def update_notable_events(baseurl, comment, status=None, urgency=None, owner=Non
     # These the arguments to the REST handler
     args = {}
     args['comment'] = comment
-    demisto.debug(f" comment to update: {args['comment']}")
+
     if status is not None:
         args['status'] = status
 
@@ -2685,12 +2704,17 @@ def get_connection_args() -> dict:
 def main():  # pragma: no cover
     command = demisto.command()
     params = demisto.params()
+
     if command == 'splunk-parse-raw':
         splunk_parse_raw_command()
         sys.exit(0)
     service = None
     proxy = argToBoolean(params.get('proxy', False))
-
+    comment_tag_to_splunk = params.get('comment_tag_to_splunk', 'FROM XSOAR')
+    comment_tag_from_splunk = params.get('comment_tag_from_splunk', 'FROM SPLUNK')
+    if comment_tag_to_splunk == comment_tag_from_splunk:
+        raise DemistoException('Comment Entry Tag to Splunk and Comment Entry Tag '
+                               'from Splunk cannot have the same value.')
     connection_args = get_connection_args()
 
     base_url = 'https://' + params['host'] + ':' + params['port'] + '/'
@@ -2737,7 +2761,7 @@ def main():  # pragma: no cover
         splunk_get_indexes_command(service)
     elif command == 'fetch-incidents':
         demisto.info('########### FETCH #############')
-        fetch_incidents(service, mapper)
+        fetch_incidents(service, mapper, comment_tag_to_splunk, comment_tag_from_splunk)
     elif command == 'splunk-submit-event':
         splunk_submit_event_command(service)
     elif command == 'splunk-notable-event-edit':
@@ -2774,20 +2798,21 @@ def main():  # pragma: no cover
         if argToBoolean(demisto.params().get('use_cim', False)):
             get_cim_mapping_field_command()
         else:
-            get_mapping_fields_command(service, mapper)
+            get_mapping_fields_command(service, mapper, comment_tag_to_splunk, comment_tag_from_splunk)
     elif command == 'get-remote-data':
         demisto.info('########### MIRROR IN #############')
         get_remote_data_command(service=service, args=demisto.args(),
                                 close_incident=demisto.params().get('close_incident'),
                                 close_end_statuses=demisto.params().get('close_end_status_statuses'),
                                 close_extra_labels=argToList(demisto.params().get('close_extra_labels', '')),
-                                mapper=mapper)
+                                mapper=mapper,
+                                comment_tag_from_splunk=comment_tag_from_splunk)
     elif command == 'get-modified-remote-data':
         demisto.info('########### MIRROR IN #############')
         get_modified_remote_data_command(service, demisto.args())
     elif command == 'update-remote-system':
         demisto.info('########### MIRROR OUT #############')
-        update_remote_system_command(demisto.args(), demisto.params(), service, auth_token, mapper)
+        update_remote_system_command(demisto.args(), demisto.params(), service, auth_token, mapper, comment_tag_to_splunk)
     elif command == 'splunk-get-username-by-xsoar-user':
         return_results(mapper.get_splunk_user_by_xsoar_command(demisto.args()))
     else:

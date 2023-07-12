@@ -3,32 +3,9 @@ from CommonServerPython import *  # noqa: F401
 
 
 def add_comment(args: Dict[str, Any]) -> CommandResults:
-    demisto.debug("adding comment AAAAAAAAA")
+    demisto.debug("adding comment")
     tags = argToList(args.get('tags', 'FROM XSOAR'))
-
-    comment_entry = {
-        'Comment': args.get('comment', ''),
-        'Comment time': datetime.now().isoformat(),
-        'Reviwer': demisto.context().get('username', ''),
-        'Tag': tags
-    }
-
-    comment_body = comment_entry.get('Comment')
-
-    # Get the incident details
-    incident = demisto.incident()
-    customFields = incident.get('CustomFields', [])
-    newcomment = customFields.get('SplunkComments', [])
-    newcomment += [comment_entry]
-    customFields['SplunkComments'] = newcomment
-
-    demisto.debug(f"\n \n \n new CustomFields: {customFields}")
-
-    #  Execute the setIncident command to update the incident in the context
-    if customFields:
-        res = demisto.executeCommand('setIncident', {'customFields': customFields})
-        if is_error(res):
-            return_error(f'Failed to update incident. Error: {str(res)}')
+    comment_body = args.get('comment', '')
 
     return CommandResults(
         readable_output=comment_body, mark_as_note=True, tags=tags or None

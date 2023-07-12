@@ -10,10 +10,6 @@
                     "complex": null,
                     "simple": "notableurgency"
                 },
-				"comment": {
-                    "complex": null,
-                    "simple": "splunkcomment"
-                },
 			  	"reviewer": {
 					"simple": "",
 					"complex": {

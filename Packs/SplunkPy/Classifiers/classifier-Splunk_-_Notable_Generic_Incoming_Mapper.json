@@ -37,6 +37,9 @@
                 },
                 "dbotMirrorInstance": {
                     "simple": "mirror_instance"
+                },
+                "dbotMirrorTags": {
+                    "simple": "mirror_tags"
                 }
             }
         },
@@ -105,6 +108,9 @@
                 "dbotMirrorInstance": {
                     "simple": "mirror_instance"
                 },
+                "dbotMirrorTags": {
+                    "simple": "mirror_tags"
+                },
                 "details": {
                     "simple": "rule_description"
                 },
@@ -167,6 +173,9 @@
                 },
                 "dbotMirrorInstance": {
                     "simple": "mirror_instance"
+                },
+                "dbotMirrorTags": {
+                    "simple": "mirror_tags"
                 }
             }
         }
