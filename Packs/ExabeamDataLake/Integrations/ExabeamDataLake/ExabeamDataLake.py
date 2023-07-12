@@ -39,9 +39,9 @@ class Client(BaseClient):
         if self.username != TOKEN_INPUT_IDENTIFIER:
             self._login()
 
-        if self.username != TOKEN_INPUT_IDENTIFIER:
-            self._logout()
-        super().__del__()
+        # if self.username != TOKEN_INPUT_IDENTIFIER:
+        #     self._logout()
+        # super().__del__()
 
     def _login(self):
         """
@@ -66,9 +66,13 @@ class Client(BaseClient):
         """
         Performs basic get request to check if the server is reachable.
         """
-        self._http_request('GET', full_url=f'{self._base_url}/api/auth/check', resp_type='text')
+        self._http_request(
+            "GET", full_url=f"{self._base_url}/api/auth/check", resp_type="text"
+        )
 
-    def query_datalake_request(self, query: str, start_time: int, end_time: int, limit: int, all_result: bool):
+    def query_datalake_request(
+        self, query: str, start_time: int, end_time: int, limit: int, all_result: bool
+    ):
         """
         Args:
             query: query to search
@@ -87,7 +91,11 @@ class Client(BaseClient):
             "query": {
                 "bool": {
                     "filter": {
-                        "bool": {"minimum_should_match": 1, "must_not": [], "should": []}
+                        "bool": {
+                            "minimum_should_match": 1,
+                            "must_not": [],
+                            "should": [],
+                        }
                     },
                     "must": {
                         "bool": {
@@ -123,67 +131,135 @@ class Client(BaseClient):
 """ COMMAND FUNCTIONS """
 
 
-def query_datalake_command(self, args: dict) -> CommandResults:
+# def query_datalake_command(client: Client, args: dict) -> CommandResults:
+#     """
+#     Args:
+#         args: demisto.args()
+#     Returns:
+#         logs
+#     """
+#     query = args.get("query", "*")
+#     # start_time = args.get("start_time")
+#     start_time = 1626118800  # July 12, 2021 00:00:00 UTC in seconds
+
+#     # end_time = args.get("end_time")
+#     # limit = int(args.get("limit", 50))
+#     # all_result = argToBoolean(args.get("all_result", False))
+
+#     headers = {"kbn-version": "5.1.1-SNAPSHOT", "Content-Type": "application/json"}
+
+#     # params = {
+#     #     "size": 200,
+#     #     "sort": [{"indexTime": {"order": "asc"}}],
+#     #     "query": {
+#     #         "bool": {
+#     #             "filter": [],
+#     #             "must": [
+#     #                 query,
+#     #                 {
+#     #                     "range": {
+#     #                         "indexTime": {
+#     #                             "gte": start_time * 1000,
+#     #                             "format": "epoch_millis"
+#     #                         }
+#     #                     }
+#     #                 }
+#     #             ]
+#     #         }
+#     #     }
+#     # }
+
+
+#     # params2 = json.dumps(params)
+
+#     # response = requests.post(full_url, params=params, headers=headers, timeout=120, verify=False, json=search_query)
+
+#     params = {
+#         "size": 200,
+#         "sort": [{"indexTime": "asc"}],
+#         "query": {
+#             "bool": {
+#                 "filter": {
+#                     "bool": {"minimum_should_match": 1, "must_not": [], "should": []}
+#                 },
+#                 "must": {
+#                     "bool": {
+#                         "must_not": [],
+#                         "must": [
+#                             query,
+#                             {
+#                                 "range": {
+#                                     "indexTime": {
+#                                         "gte": start_time * 1000,
+#                                         "format": "epoch_millis",
+#                                     }
+#                                 }
+#                             },
+#                         ],
+#                     }
+#                 },
+#             }
+#         },
+#     }
+#     params2 = json.dumps(params)
+
+#     response = client._http_request(
+#         "POST",
+#         full_url=f"{client._base_url}/dl/api/es/search",
+#         json_data=params,
+#         headers=headers,
+#         timeout=120,
+#         resp_type="text",
+#     )
+
+#     response = response.json()["hits"]["hits"]
+
+#     return CommandResults(outputs_prefix="ExabeamDataLake.Log", outputs=response)
+
+
+def query_datalake_command(client: Client, args: dict) -> CommandResults:
     """
     Args:
         args: demisto.args()
     Returns:
         logs
     """
-    query = args.get("query")
-    start_time = args.get("start_time")
-    end_time = args.get("end_time")
-    limit = int(args.get("limit", 50))
-    all_result = argToBoolean(args.get("all_result", False))
+    query = args.get("query", "*")
+    json.dumps(query)
+
+    # start_time = args.get("start_time")
+
+    # end_time = args.get("end_time")
+    # limit = int(args.get("limit", 50))
+    # all_result = argToBoolean(args.get("all_result", False))
 
     headers = {"kbn-version": "5.1.1-SNAPSHOT", "Content-Type": "application/json"}
 
     params = {
-        "size": 200,
-        "sort": [{"indexTime": "asc"}],
         "query": {
             "bool": {
-                "filter": {
-                    "bool": {"minimum_should_match": 1, "must_not": [], "should": []}
-                },
-                "must": {
-                    "bool": {
-                        "must_not": [],
-                        "must": [
-                            query,
-                            {
-                                "range": {
-                                    "indexTime": {
-                                        "gte": 1000,
-                                        "format": "epoch_millis",
-                                    }
-                                }
-                            },
-                        ],
+                "must": [
+                    {
+                        "query_string": {
+                            "query": query
+                        }
                     }
-                },
+                ]
             }
-        },
+        }
     }
-    params2 = json.dumps(params)
+    params2 = json.dumps(params).encode("utf-8")
 
-    # response = requests.post(full_url, params=params, headers=headers, timeout=120, verify=False, json=search_query)
-
-    response = self._http_request(
+    response = client._http_request(
         "POST",
-        full_url=f"{self._base_url}/dl/api/es/search",
-        params=params2,
+        full_url=f"{client._base_url}/dl/api/es/search",
+        data=params2,
         headers=headers,
-        timeout=120,
-        resp_type="text",
     )
 
     response = response.json()["hits"]["hits"]
 
-    return CommandResults(
-        outputs_prefix='ExabeamDataLake.Log',
-        outputs=response
-    )
+    return CommandResults(outputs_prefix="ExabeamDataLake.Log", outputs=response)
 
 
 def test_module(client: Client):
@@ -196,7 +272,7 @@ def test_module(client: Client):
         ok if successful
     """
     client.test_module_request()
-    demisto.results('ok')
+    demisto.results("ok")
 
 
 """ MAIN FUNCTION """
@@ -213,20 +289,26 @@ def main() -> None:
     command = demisto.command()
     username = params["credentials"]["identifier"]
     password = params["credentials"]["password"]
-    base_url = params["url"].rstrip('/')
+    base_url = params["url"].rstrip("/")
 
     verify_certificate = not params.get("insecure", False)
 
     proxy = params.get("proxy", False)
 
     demisto.debug(f"Command being called is {command}")
-    headers = {'Accept': 'application/json', 'Csrf-Token': 'nocheck'}
+    headers = {"Accept": "application/json", "Csrf-Token": "nocheck"}
 
     if username == TOKEN_INPUT_IDENTIFIER:
         headers["ExaAuthToken"] = password
     try:
-        client = Client(base_url, verify=verify_certificate, username=username,
-                        password=password, proxy=proxy, headers=headers)
+        client = Client(
+            base_url,
+            verify=verify_certificate,
+            username=username,
+            password=password,
+            proxy=proxy,
+            headers=headers,
+        )
 
         match command:
             case "test-module":
