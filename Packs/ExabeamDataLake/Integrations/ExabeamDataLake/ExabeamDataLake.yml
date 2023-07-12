@@ -28,7 +28,7 @@ script:
   - arguments:
     - description: '[Enter a description of the argument, including any important information users need to know, for example, default values.]'
       name: query
-    - description: '[Enter a description of the argument, including any important information users need to know, for example, default values.]'
+    - description: Can be either "*" or "VPN" etc.
       name: start_time
     - description: '[Enter a description of the argument, including any important information users need to know, for example, default values.]'
       name: end_time

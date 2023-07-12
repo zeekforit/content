@@ -1,3 +1,4 @@
+from datetime import date
 import demistomock as demisto
 from CommonServerPython import *  # noqa
 from CommonServerUserPython import *  # noqa
@@ -70,151 +71,17 @@ class Client(BaseClient):
             "GET", full_url=f"{self._base_url}/api/auth/check", resp_type="text"
         )
 
-    def query_datalake_request(
-        self, query: str, start_time: int, end_time: int, limit: int, all_result: bool
-    ):
-        """
-        Args:
-            query: query to search
-            start_time: start time in epoch
-            end_time: end time in epoch
-            limit: limit of results
-            all_result: get all results or not
-        Returns:
-            logs
-        """
+    def query_datalake_request(self, search_query: dict) -> dict:
         headers = {"kbn-version": "5.1.1-SNAPSHOT", "Content-Type": "application/json"}
-
-        params = {
-            "size": 200,
-            "sort": [{"indexTime": "asc"}],
-            "query": {
-                "bool": {
-                    "filter": {
-                        "bool": {
-                            "minimum_should_match": 1,
-                            "must_not": [],
-                            "should": [],
-                        }
-                    },
-                    "must": {
-                        "bool": {
-                            "must_not": [],
-                            "must": [
-                                query,
-                                {
-                                    "range": {
-                                        "indexTime": {
-                                            "gte": start_time * 1000,
-                                            "format": "epoch_millis",
-                                        }
-                                    }
-                                },
-                            ],
-                        }
-                    },
-                }
-            },
-        }
-
-        if all_result:
-            params["size"] = 10000
-
         return self._http_request(
             "POST",
-            full_url=f"{self._base_url}/api/datalake/search",
+            full_url=f"{self._base_url}/dl/api/es/search",
+            data=json.dumps(search_query),
             headers=headers,
-            params=params,
         )
 
 
 """ COMMAND FUNCTIONS """
-
-
-# def query_datalake_command(client: Client, args: dict) -> CommandResults:
-#     """
-#     Args:
-#         args: demisto.args()
-#     Returns:
-#         logs
-#     """
-#     query = args.get("query", "*")
-#     # start_time = args.get("start_time")
-#     start_time = 1626118800  # July 12, 2021 00:00:00 UTC in seconds
-
-#     # end_time = args.get("end_time")
-#     # limit = int(args.get("limit", 50))
-#     # all_result = argToBoolean(args.get("all_result", False))
-
-#     headers = {"kbn-version": "5.1.1-SNAPSHOT", "Content-Type": "application/json"}
-
-#     # params = {
-#     #     "size": 200,
-#     #     "sort": [{"indexTime": {"order": "asc"}}],
-#     #     "query": {
-#     #         "bool": {
-#     #             "filter": [],
-#     #             "must": [
-#     #                 query,
-#     #                 {
-#     #                     "range": {
-#     #                         "indexTime": {
-#     #                             "gte": start_time * 1000,
-#     #                             "format": "epoch_millis"
-#     #                         }
-#     #                     }
-#     #                 }
-#     #             ]
-#     #         }
-#     #     }
-#     # }
-
-
-#     # params2 = json.dumps(params)
-
-#     # response = requests.post(full_url, params=params, headers=headers, timeout=120, verify=False, json=search_query)
-
-#     params = {
-#         "size": 200,
-#         "sort": [{"indexTime": "asc"}],
-#         "query": {
-#             "bool": {
-#                 "filter": {
-#                     "bool": {"minimum_should_match": 1, "must_not": [], "should": []}
-#                 },
-#                 "must": {
-#                     "bool": {
-#                         "must_not": [],
-#                         "must": [
-#                             query,
-#                             {
-#                                 "range": {
-#                                     "indexTime": {
-#                                         "gte": start_time * 1000,
-#                                         "format": "epoch_millis",
-#                                     }
-#                                 }
-#                             },
-#                         ],
-#                     }
-#                 },
-#             }
-#         },
-#     }
-#     params2 = json.dumps(params)
-
-#     response = client._http_request(
-#         "POST",
-#         full_url=f"{client._base_url}/dl/api/es/search",
-#         json_data=params,
-#         headers=headers,
-#         timeout=120,
-#         resp_type="text",
-#     )
-
-#     response = response.json()["hits"]["hits"]
-
-#     return CommandResults(outputs_prefix="ExabeamDataLake.Log", outputs=response)
 
 
 def query_datalake_command(client: Client, args: dict) -> CommandResults:
@@ -224,42 +91,51 @@ def query_datalake_command(client: Client, args: dict) -> CommandResults:
     Returns:
         logs
     """
-    query = args.get("query", "*")
-    json.dumps(query)
+    query = args["query"]
+    limit = arg_to_number(args.get("limit", 50))
+    all_result = argToBoolean(args.get("all_result", False))
 
-    # start_time = args.get("start_time")
+    if start_time := args.get("start_time"):
+        start_time = date_to_timestamp(start_time)
 
-    # end_time = args.get("end_time")
-    # limit = int(args.get("limit", 50))
-    # all_result = argToBoolean(args.get("all_result", False))
+    if end_time := args.get("end_time"):
+        end_time = date_to_timestamp(end_time)
 
-    headers = {"kbn-version": "5.1.1-SNAPSHOT", "Content-Type": "application/json"}
+    if start_time > end_time:
+        raise ValueError("Start time must be before end time")
 
-    params = {
-        "query": {
-            "bool": {
-                "must": [
-                    {
-                        "query_string": {
-                            "query": query
-                        }
-                    }
-                ]
-            }
-        }
+    if all_result:
+        size = "*"
+    elif:
+        size = limit
+
+    search_query = {
+        "sortBy": [{"field": "@timestamp", "order": "desc", "unmappedType": "date"}], # the response sort by timestamp
+        "rangeQuery": { # get query start and end time
+            "field": "@timestamp",
+            "gte": str(start_time * 1000), # Greater than or equal to.
+            "lte": str(end_time * 1000),  # Less than.
+        },
+        "query": query, # can be "VPN" or "*"
+        "size": size, # the size of the response
+        "clusterWithIndices": [
+            {
+                "clusterName": "local",
+                "indices": ["exabeam-2023.07.12"],
+            }  # TODO -need to check if this is hardcoded
+        ],
     }
-    params2 = json.dumps(params).encode("utf-8")
 
-    response = client._http_request(
-        "POST",
-        full_url=f"{client._base_url}/dl/api/es/search",
-        data=params2,
-        headers=headers,
+    response = client.query_datalake_request(search_query)
+
+    response = response["responses"][0]["hits"]["hits"]
+    markdown_table = tableToMarkdown("Logs", t=response)
+    
+    return CommandResults(
+        outputs_prefix="ExabeamDataLake.Log",
+        outputs=response,
+        readable_output=markdown_table
     )
-
-    response = response.json()["hits"]["hits"]
-
-    return CommandResults(outputs_prefix="ExabeamDataLake.Log", outputs=response)
 
 
 def test_module(client: Client):
