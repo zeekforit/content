@@ -91,33 +91,31 @@ def query_datalake_command(client: Client, args: dict) -> CommandResults:
     Returns:
         logs
     """
-    query = args["query"]
+    # query = args["query"]
+    query = "*"
     limit = arg_to_number(args.get("limit", 50))
     all_result = argToBoolean(args.get("all_result", False))
 
-    if start_time := args.get("start_time"):
-        start_time = date_to_timestamp(start_time)
+    # if start_time := args.get("start_time"):
+    start_time = date_to_timestamp("2021-02-02T13:56:53")
 
-    if end_time := args.get("end_time"):
-        end_time = date_to_timestamp(end_time)
+    # if end_time := args.get("end_time"):
+    end_time = date_to_timestamp("2023-07-13T14:11:53")
 
     if start_time > end_time:
         raise ValueError("Start time must be before end time")
 
-    if all_result:
-        size = "*"
-    elif:
-        size = limit
+    size = 0 if all_result else limit
 
     search_query = {
         "sortBy": [{"field": "@timestamp", "order": "desc", "unmappedType": "date"}], # the response sort by timestamp
-        "rangeQuery": { # get query start and end time
+        "rangeQuery": {  # get query start and end time
             "field": "@timestamp",
-            "gte": str(start_time * 1000), # Greater than or equal to.
-            "lte": str(end_time * 1000),  # Less than.
+            "gte": str(start_time),  # Greater than or equal to. , the time is in milliseconds(13 numbers)
+            "lte": str(end_time),  # Less than.
         },
-        "query": query, # can be "VPN" or "*"
-        "size": size, # the size of the response
+        "query": query,  # can be "VPN" or "*"
+        "size": 159235,  # the size of the response
         "clusterWithIndices": [
             {
                 "clusterName": "local",
@@ -127,13 +125,15 @@ def query_datalake_command(client: Client, args: dict) -> CommandResults:
     }
 
     response = client.query_datalake_request(search_query)
-
-    response = response["responses"][0]["hits"]["hits"]
+    if error := response["responses"][0].get("error"):
+        raise DemistoException(f"Error in query: {error['root_cause'][0]['reason']}")
+    total_data = response["responses"][0]["hits"]["total"]   # the total data we have in the data lake related the query, not the response size
+    data_response = response["responses"][0]["hits"]["hits"]
     markdown_table = tableToMarkdown("Logs", t=response)
-    
+
     return CommandResults(
         outputs_prefix="ExabeamDataLake.Log",
-        outputs=response,
+        outputs=data_response,
         readable_output=markdown_table
     )
 
