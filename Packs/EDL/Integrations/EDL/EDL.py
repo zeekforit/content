@@ -9,7 +9,8 @@ import re
 from base64 import b64decode
 from flask import Flask, Response, request
 from netaddr import IPSet, IPNetwork
-from typing import Any, Dict, cast, Iterable, Callable, IO
+from typing import Any, cast, IO
+from collections.abc import Iterable, Callable
 from math import ceil
 import tldextract
 import urllib3
@@ -220,13 +221,12 @@ class RequestArguments:
                 fields_to_present:
             if 'all' in argToList(fields_to_present):
                 return ''
-            else:
-                # replace "value" to "name"
-                list_fields = argToList(fields_to_present)
-                if 'value' in list_fields:
-                    list_fields[list_fields.index('value')] = 'name'
-                    fields_to_present = ",".join(list_fields)
-                return fields_to_present
+            # replace "value" to "name"
+            list_fields = argToList(fields_to_present)
+            if 'value' in list_fields:
+                list_fields[list_fields.index('value')] = 'name'
+                fields_to_present = ",".join(list_fields)
+            return fields_to_present
 
         return fields_for_format.get(self.out_format, self.FILTER_FIELDS_ON_FORMAT_TEXT)
 
@@ -242,8 +242,10 @@ def iterable_to_str(iterable: Iterable, delimiter: str = '\n') -> str:
     if iterable:
         try:
             iter(iterable)
-        except TypeError:
-            raise DemistoException(f'non iterable object provided to iterable_to_str: {iterable}')
+        except TypeError as e:
+            raise DemistoException(
+                f'non iterable object provided to iterable_to_str: {iterable}'
+            ) from e
         str_res = delimiter.join(map(str, iterable))
     return str_res
 
@@ -297,7 +299,7 @@ def create_new_edl(request_args: RequestArguments) -> tuple[str, int]:
             # continue searching iocs if 1) iocs was truncated or 2) got all available iocs
             if count + 1 > limit:
                 break
-            elif line not in iocs_set:
+            if line not in iocs_set:
                 iocs_set.add(line)
                 formatted_indicators += line
 
@@ -382,7 +384,7 @@ def get_indicators_to_format(indicator_searcher: IndicatorsSearcher,
 
 
 @debug_function
-def create_json_out_format(list_fields: List, indicator: Dict, request_args: RequestArguments, not_first_call=True) -> str:
+def create_json_out_format(list_fields: List, indicator: dict, request_args: RequestArguments, not_first_call=True) -> str:
     """format the indicator to json format.
 
     Args:
@@ -404,8 +406,8 @@ def create_json_out_format(list_fields: List, indicator: Dict, request_args: Req
             filtered_json[field] = value
         indicator = filtered_json
     if not_first_call:
-        return ', ' + json.dumps(indicator)
-    return '[' + json.dumps(indicator)
+        return f', {json.dumps(indicator)}'
+    return f'[{json.dumps(indicator)}'
 
 
 @debug_function
@@ -426,16 +428,13 @@ def create_mwg_out_format(indicator: dict, request_args: RequestArguments, heade
 
     value = "\"" + indicator.get('value', '') + "\""
     sources = indicator.get('sourceBrands')
-    if sources:
-        sources_string = "\"" + ','.join(sources) + "\""
-    else:
-        sources_string = "\"from CORTEX XSOAR\""
+    sources_string = '"' + ','.join(sources) + '"' if sources else '"from CORTEX XSOAR"'
 
     if not headers_was_writen:
         mwg_type = request_args.mwg_type
         if isinstance(mwg_type, list):
             mwg_type = mwg_type[0]
-        return "type=" + mwg_type + "\n" + value + " " + sources_string
+        return f"type={mwg_type}" + "\n" + value + " " + sources_string
     return '\n' + value + " " + sources_string
 
 
@@ -497,13 +496,10 @@ def create_proxysg_out_format(indicator: dict, files_by_category: dict, request_
 
 
 @debug_function
-def add_indicator_to_category(indicator: str, category: str, files_by_category: Dict):
-    if category in files_by_category.keys():
-        files_by_category[category].write(indicator + '\n')
-
-    else:
+def add_indicator_to_category(indicator: str, category: str, files_by_category: dict):
+    if category not in files_by_category.keys():
         files_by_category[category] = tempfile.TemporaryFile(mode='w+t')
-        files_by_category[category].write(indicator + '\n')
+    files_by_category[category].write(indicator + '\n')
 
     return files_by_category
 
@@ -744,13 +740,13 @@ def create_text_out_format(iocs: IO, request_args: RequestArguments) -> Union[IO
             formatted_indicators.write(new_line + str(indicator))
             new_line = '\n'
     iocs.close()
-    if len(ipv4_formatted_indicators) > 0:
+    if ipv4_formatted_indicators:
         ipv4_formatted_indicators = ips_to_ranges(ipv4_formatted_indicators, request_args.collapse_ips)
         for ip in ipv4_formatted_indicators:
             formatted_indicators.write(new_line + str(ip))
             new_line = '\n'
 
-    if len(ipv6_formatted_indicators) > 0:
+    if ipv6_formatted_indicators:
         ipv6_formatted_indicators = ips_to_ranges(ipv6_formatted_indicators, request_args.collapse_ips)
         for ip in ipv6_formatted_indicators:
             formatted_indicators.write(new_line + str(ip))
@@ -776,7 +772,7 @@ def url_handler(indicator: str, url_protocol_stripping: bool, url_port_stripping
         indicator = _PORT_REMOVAL.sub(_URL_WITHOUT_PORT, indicator)
 
     if url_truncate and len(indicator) >= PAN_OS_MAX_URL_LEN:
-        indicator = indicator[0:PAN_OS_MAX_URL_LEN - 1]
+        indicator = indicator[:PAN_OS_MAX_URL_LEN - 1]
 
     return indicator
 
@@ -828,7 +824,7 @@ def get_edl_on_demand() -> tuple[str, int]:
         demisto.debug("edl: Reading EDL data from cache")
 
         try:
-            with open(EDL_ON_DEMAND_CACHE_PATH, 'r') as file:
+            with open(EDL_ON_DEMAND_CACHE_PATH) as file:
                 edl_data = file.read()
 
         except Exception as e:
@@ -883,7 +879,7 @@ def route_edl() -> Response:
     cache_refresh_rate: str = params.get('cache_refresh_rate')
 
     if username and password:
-        headers: dict = cast(Dict[Any, Any], request.headers)
+        headers: dict = cast(dict[Any, Any], request.headers)
         if not validate_basic_authentication(headers, username, password):
             err_msg: str = 'Basic authentication failed. Make sure you are using the right credentials.'
             demisto.debug(err_msg)
@@ -924,7 +920,7 @@ def route_edl() -> Response:
 
     headers = [
         ('X-EDL-Created', created.isoformat()),
-        ('X-EDL-Query-Time-Secs', "{:.3f}".format(query_time)),
+        ('X-EDL-Query-Time-Secs', f"{query_time:.3f}"),
         ('X-EDL-Size', str(edl_size)),
         ('X-EDL-Origin-Size', original_indicators_count),
         ('ETag', etag),
@@ -1002,9 +998,8 @@ def get_request_args(request_args: dict, params: dict) -> RequestArguments:
     elif out_format == FORMAT_ARG_MWG:
         out_format = FORMAT_MWG
 
-    if out_format == FORMAT_MWG:
-        if mwg_type not in MWG_TYPE_OPTIONS:
-            raise DemistoException(EDL_MWG_TYPE_ERR_MSG)
+    if out_format == FORMAT_MWG and mwg_type not in MWG_TYPE_OPTIONS:
+        raise DemistoException(EDL_MWG_TYPE_ERR_MSG)
 
     if params.get('use_legacy_query'):
         # workaround for "msgpack: invalid code" error
@@ -1040,7 +1035,7 @@ def get_request_args(request_args: dict, params: dict) -> RequestArguments:
 ''' COMMAND FUNCTIONS '''
 
 
-def test_module(_: Dict, params: Dict):
+def test_module(_: dict, params: dict):
     """
     Validates:
         1. Valid port.
@@ -1050,7 +1045,7 @@ def test_module(_: Dict, params: Dict):
         # This is for the autogeneration port feature before port allocation.
         params['longRunningPort'] = '1111'
     get_params_port(params)
-    on_demand = params.get('on_demand', None)
+    on_demand = params.get('on_demand')
     if not on_demand:
         try_parse_integer(params.get('edl_size'), EDL_LIMIT_ERR_MSG)  # validate EDL Size was set
         cache_refresh_rate = params.get('cache_refresh_rate', '')
@@ -1061,8 +1056,18 @@ def test_module(_: Dict, params: Dict):
         if len(range_split) != 2:
             raise ValueError(EDL_MISSING_REFRESH_ERR_MSG)
         try_parse_integer(range_split[0], 'Invalid time value for the Refresh Rate. Must be a valid integer.')
-        if not range_split[1] in ['minute', 'minutes', 'hour', 'hours', 'day', 'days', 'month', 'months', 'year',
-                                  'years']:
+        if range_split[1] not in {
+            'minute',
+            'minutes',
+            'hour',
+            'hours',
+            'day',
+            'days',
+            'month',
+            'months',
+            'year',
+            'years',
+        }:
             raise ValueError(
                 'Invalid time unit for the Refresh Rate. Must be minutes, hours, days, months, or years.')
         parse_date_range(cache_refresh_rate, to_timestamp=True)
@@ -1071,7 +1076,7 @@ def test_module(_: Dict, params: Dict):
 
 
 @debug_function
-def update_edl_command(args: Dict, params: Dict):
+def update_edl_command(args: dict, params: dict):
     """
     Updates the context to update the EDL values on demand the next time it runs
     """
@@ -1185,9 +1190,12 @@ def check_platform_and_version(params: dict) -> bool:
         (bool): True if the platform is xsoar or xsoar hosted and no port specified, false otherwise
     """
     platform = demisto.demistoVersion().get("platform", 'xsoar')
-    if platform in ['xsoar', 'xsoar_hosted']:
-        if not is_demisto_version_ge('8.0.0') and not params.get('longRunningPort'):
-            return True
+    if (
+        platform in ['xsoar', 'xsoar_hosted']
+        and not is_demisto_version_ge('8.0.0')
+        and not params.get('longRunningPort')
+    ):
+        return True
     return False
 
 
