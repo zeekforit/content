@@ -85,54 +85,82 @@ class Client(BaseClient):
 
 def query_datalake_command(client: Client, args: dict) -> CommandResults:
     """
+    Query the datalake command and return the results in a formatted table.
+
     Args:
-        args: demisto.args()
+        client: The client object for interacting with the API.
+        args: The arguments passed to the command.
+
     Returns:
-        logs
+        CommandResults: The command results object containing outputs and readable output.
     """
+    def _parse_entry(entry: dict) -> dict:
+        """
+        Parse a single entry from the API response to a dictionary.
+
+        Args:
+            entry: The entry from the API response.
+
+        Returns:
+            dict: The parsed entry dictionary.
+        """
+        source = entry["_source"]
+        return {
+            "id": entry.get("_id"),
+            "Vendor": source.get("Vendor"),
+            "time": source.get("time"),
+            "Product": source.get("Product"),
+            "event name": source.get("event_name"),
+            "action": source.get("action"),
+        }
+
     query = args["query"]
     limit = arg_to_number(args.get("limit", 50))
     all_result = argToBoolean(args.get("all_result", False))
 
-    # if start_time := args.get("start_time"):
-    start_time = date_to_timestamp("2021-02-02T13:56:53")
+    search_query: dict = {}
 
-    # if end_time := args.get("end_time"):
-    end_time = date_to_timestamp("2023-07-13T14:11:53")
+    if start_time := args.get("start_time"):
+        search_query["rangeQuery"] = {"field": "@timestamp"}
+        search_query["rangeQuery"].update(
+            {"gte": str(date_to_timestamp(start_time))}
+        )
 
-    if start_time > end_time:
+    if (end_time := args.get("end_time")) and not start_time:
+        raise ValueError("Start time must be provided with end time")
+
+    search_query["rangeQuery"].update(
+        {"lte": str(date_to_timestamp(end_time))}
+    )
+
+    if start_time and start_time > end_time:
         raise ValueError("Start time must be before end time")
 
     result_size_to_get = 10_000 if all_result else limit
 
-    search_query = {
-        "sortBy": [
-            {"field": "@timestamp", "order": "desc", "unmappedType": "date"}
-        ],  # the response sort by timestamp
-        "rangeQuery": {  # get query start and end time
-            "field": "@timestamp",
-            "gte": str(
-                start_time
-            ),  # Greater than or equal to. , the time is in milliseconds(13 numbers)
-            "lte": str(end_time),  # Less than.
-        },
-        "query": query,  # can be "VPN" or "*"
-        "size": result_size_to_get,  # the size of the response
-        "clusterWithIndices": [
-            {
-                "clusterName": "local",
-                "indices": ["exabeam-2023.07.12"],
-            }  # TODO -need to check if this is hardcoded
-        ],
-    }
+    search_query.update(
+        {
+            "sortBy": [
+                {"field": "@timestamp", "order": "desc", "unmappedType": "date"}
+            ],  # the response sort by timestamp
+            "query": query,  # can be "VPN" or "*"
+            "size": result_size_to_get,  # the size of the response
+            "clusterWithIndices": [
+                {
+                    "clusterName": "local",
+                    "indices": ["exabeam-2023.07.12"],
+                }  # TODO -need to check if this is hardcoded
+            ],
+        }
+    )
 
     response = client.query_datalake_request(search_query)
     if error := response["responses"][0].get("error"):
         raise DemistoException(f"Error in query: {error['root_cause'][0]['reason']}")
 
     data_response = response["responses"][0]["hits"]["hits"]
-
-    markdown_table = tableToMarkdown("Logs", t=response)
+    table_to_markdown = [_parse_entry(entry) for entry in data_response]
+    markdown_table = tableToMarkdown(name="Logs", t=table_to_markdown)
 
     return CommandResults(
         outputs_prefix="ExabeamDataLake.Log",

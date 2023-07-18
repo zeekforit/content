@@ -35,7 +35,7 @@ script:
       name: limit
     - defaultValue: false
       auto: PREDEFINED
-      description: '[Enter a description of the argument, including any important information users need to know, for example, default values.]'
+      description: 'the limit of exabeam data lake query result, max is 10,000'
       name: all_result
       predefined:
       - true
