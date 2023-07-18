@@ -1,3 +1,4 @@
+from math import e
 import demistomock as demisto
 from CommonServerPython import *  # noqa
 from CommonServerUserPython import *  # noqa
@@ -83,6 +84,35 @@ class Client(BaseClient):
 """ COMMAND FUNCTIONS """
 
 
+def _handle_time_range_query(start_time: int | None, end_time: int | None) -> dict:
+    """Handle time range query
+     Args:
+          start_time: start time
+          end_time: end time
+    Returns:
+        dict: time range query
+    """
+    if not start_time and not end_time:
+        return {}
+
+    if end_time and not start_time:
+        raise DemistoException("Start time must be provided with end time")
+
+    if start_time and start_time > end_time:
+        raise DemistoException("Start time must be before end time")
+
+    query_range: dict = {
+        "rangeQuery": {
+            "field": "@timestamp",
+            "gte": str(date_to_timestamp(start_time)),
+        }
+    }
+    if end_time:
+        query_range["rangeQuery"].update({"lte": str(date_to_timestamp(end_time))})
+
+    return query_range
+
+
 def query_datalake_command(client: Client, args: dict) -> CommandResults:
     """
     Query the datalake command and return the results in a formatted table.
@@ -94,6 +124,7 @@ def query_datalake_command(client: Client, args: dict) -> CommandResults:
     Returns:
         CommandResults: The command results object containing outputs and readable output.
     """
+
     def _parse_entry(entry: dict) -> dict:
         """
         Parse a single entry from the API response to a dictionary.
@@ -118,23 +149,13 @@ def query_datalake_command(client: Client, args: dict) -> CommandResults:
     limit = arg_to_number(args.get("limit", 50))
     all_result = argToBoolean(args.get("all_result", False))
 
-    search_query: dict = {}
-
     if start_time := args.get("start_time"):
-        search_query["rangeQuery"] = {"field": "@timestamp"}
-        search_query["rangeQuery"].update(
-            {"gte": str(date_to_timestamp(start_time))}
-        )
+        start_time = date_to_timestamp(start_time)
 
-    if (end_time := args.get("end_time")) and not start_time:
-        raise ValueError("Start time must be provided with end time")
+    if end_time := args.get("end_time"):
+        end_time = date_to_timestamp(end_time)
 
-    search_query["rangeQuery"].update(
-        {"lte": str(date_to_timestamp(end_time))}
-    )
-
-    if start_time and start_time > end_time:
-        raise ValueError("Start time must be before end time")
+    search_query: dict = _handle_time_range_query(start_time, end_time)
 
     result_size_to_get = 10_000 if all_result else limit
 
