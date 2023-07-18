@@ -1,4 +1,3 @@
-from datetime import date
 import demistomock as demisto
 from CommonServerPython import *  # noqa
 from CommonServerUserPython import *  # noqa
@@ -91,8 +90,7 @@ def query_datalake_command(client: Client, args: dict) -> CommandResults:
     Returns:
         logs
     """
-    # query = args["query"]
-    query = "*"
+    query = args["query"]
     limit = arg_to_number(args.get("limit", 50))
     all_result = argToBoolean(args.get("all_result", False))
 
@@ -105,17 +103,21 @@ def query_datalake_command(client: Client, args: dict) -> CommandResults:
     if start_time > end_time:
         raise ValueError("Start time must be before end time")
 
-    size = 0 if all_result else limit
+    result_size_to_get = 10_000 if all_result else limit
 
     search_query = {
-        "sortBy": [{"field": "@timestamp", "order": "desc", "unmappedType": "date"}], # the response sort by timestamp
+        "sortBy": [
+            {"field": "@timestamp", "order": "desc", "unmappedType": "date"}
+        ],  # the response sort by timestamp
         "rangeQuery": {  # get query start and end time
             "field": "@timestamp",
-            "gte": str(start_time),  # Greater than or equal to. , the time is in milliseconds(13 numbers)
+            "gte": str(
+                start_time
+            ),  # Greater than or equal to. , the time is in milliseconds(13 numbers)
             "lte": str(end_time),  # Less than.
         },
         "query": query,  # can be "VPN" or "*"
-        "size": 159235,  # the size of the response
+        "size": result_size_to_get,  # the size of the response
         "clusterWithIndices": [
             {
                 "clusterName": "local",
@@ -127,14 +129,15 @@ def query_datalake_command(client: Client, args: dict) -> CommandResults:
     response = client.query_datalake_request(search_query)
     if error := response["responses"][0].get("error"):
         raise DemistoException(f"Error in query: {error['root_cause'][0]['reason']}")
-    total_data = response["responses"][0]["hits"]["total"]   # the total data we have in the data lake related the query, not the response size
+
     data_response = response["responses"][0]["hits"]["hits"]
+
     markdown_table = tableToMarkdown("Logs", t=response)
 
     return CommandResults(
         outputs_prefix="ExabeamDataLake.Log",
         outputs=data_response,
-        readable_output=markdown_table
+        readable_output=markdown_table,
     )
 
 
@@ -155,11 +158,6 @@ def test_module(client: Client):
 
 
 def main() -> None:
-    """main function, parses params and runs command functions
-
-    :return:
-    :rtype:
-    """
     params = demisto.params()
     args = demisto.args()
     command = demisto.command()
