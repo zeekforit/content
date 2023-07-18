@@ -1,7 +1,7 @@
 category: Data Enrichment & Threat Intelligence
 commonfields:
   id: Alexa Rank Indicator v2
-  version: -1
+  version: 5
 configuration:
 - defaultvalue: 'https://awis.api.alexa.com/api'
   display: Base API URL
