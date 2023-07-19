@@ -2087,6 +2087,7 @@ Gets a list of all alert rule templates.
 
 #### Context Example
 
+
 ```json
 {
     "AzureSentinel": {
