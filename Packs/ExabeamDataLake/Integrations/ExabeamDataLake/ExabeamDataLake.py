@@ -1,4 +1,3 @@
-from math import e
 import demistomock as demisto
 from CommonServerPython import *  # noqa
 from CommonServerUserPython import *  # noqa
@@ -93,9 +92,6 @@ def _handle_time_range_query(start_time: int, end_time: int | None) -> dict:
         dict: time range query
     """
 
-    if end_time and not start_time:
-        raise DemistoException("Start time must be provided with end time")
-
     if end_time and (start_time > end_time):
         raise DemistoException("Start time must be before end time")
 
@@ -133,7 +129,7 @@ def query_datalake_command(client: Client, args: dict) -> CommandResults:
         Returns:
             dict: The parsed entry dictionary.
         """
-        source = entry["_source"]
+        source: dict = entry.get("_source", {})
         return {
             "id": entry.get("_id"),
             "Vendor": source.get("Vendor"),
@@ -208,6 +204,7 @@ def main() -> None:
     params = demisto.params()
     args = demisto.args()
     command = demisto.command()
+
     username = params["credentials"]["identifier"]
     password = params["credentials"]["password"]
     base_url = params["url"].rstrip("/")
@@ -216,7 +213,6 @@ def main() -> None:
 
     proxy = params.get("proxy", False)
 
-    demisto.debug(f"Command being called is {command}")
     headers = {"Accept": "application/json", "Csrf-Token": "nocheck"}
 
     if username == TOKEN_INPUT_IDENTIFIER:
@@ -230,6 +226,8 @@ def main() -> None:
             proxy=proxy,
             headers=headers,
         )
+
+        demisto.debug(f"Command being called is {command}")
 
         match command:
             case "test-module":
