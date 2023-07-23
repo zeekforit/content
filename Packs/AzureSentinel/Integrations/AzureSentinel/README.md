@@ -2102,7 +2102,7 @@ Gets a list of all alert rule templates.
                 "queryPeriod": "P1D",
                 "triggerOperator": "GreaterThan",
                 "triggerThreshold": 0,
-                "displayName": "Changes to Amazon VPC settings",
+                "displayName": "Changes to \n\rotalAmazon VPC settings",
                 "description": "This alert monitors changes to Amazon VPC (Virtual Private Cloud) settings such as new ACL entries and routes in route tables.\nMore information: https://medium.com/@GorillaStack/the-most-important-aws-cloudtrail-security-events-to-track-a5b9873f8255 \nand https://aws.amazon.com/vpc/",
                 "tactics": [
                 "PrivilegeEscalation",
