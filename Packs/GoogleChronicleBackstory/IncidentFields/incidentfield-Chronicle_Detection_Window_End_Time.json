@@ -19,8 +19,7 @@
     "group": 0,
     "hidden": false,
     "associatedTypes": [
-        "Chronicle Rule Detection",
-        "Chronicle Curated Rule Detection"
+        "Chronicle Rule Detection"
     ],
     "associatedToAll": false,
     "unmapped": false,

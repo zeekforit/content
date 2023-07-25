@@ -5,7 +5,6 @@
     "keyTypeMap": {
         "AssetAlert": "Chronicle Asset Alert",
         "DetectionAlert": "Chronicle Rule Detection",
-        "CuratedRuleDetectionAlert": "Chronicle Curated Rule Detection",
         "IocDomainMatches": "Chronicle IOC Domain Matches",
         "UserAlert": "Chronicle User Alert"
     },
