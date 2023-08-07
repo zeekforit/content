@@ -29,6 +29,7 @@ DEFAULT_EVENTS_TIMEOUT = 30  # default timeout for the events enrichment in minu
 PROFILING_DUMP_ROWS_LIMIT = 20
 MAX_RETRIES_CONTEXT = 5  # max number of retries to update the context
 MAX_SEARCHES_QUEUE = 10  # maximum number of concurrent searches in mirroring
+EXIT_ON_ERROR_COUNTER = 3  # number of retries before integration exits with error
 
 SAMPLE_SIZE = 2  # number of samples to store in integration context
 EVENTS_INTERVAL_SECS = 60  # interval between events polling
@@ -80,6 +81,9 @@ MIRROR_DIRECTION: dict[str, Optional[str]] = {
 MIRRORED_OFFENSES_QUERIED_CTX_KEY = 'mirrored_offenses_queried'
 MIRRORED_OFFENSES_FINISHED_CTX_KEY = 'mirrored_offenses_finished'
 MIRRORED_OFFENSES_FETCHED_CTX_KEY = 'mirrored_offenses_fetched'
+
+EXIT_ON_ERROR_CNT_CTX_KEY = 'exit_on_error_counter'
+EXIT_ON_ERROR_MSG_CTX_KEY = 'exit_on_error_message'
 
 LAST_MIRROR_KEY = 'last_mirror_update'
 UTC_TIMEZONE = pytz.timezone('utc')
@@ -2215,9 +2219,19 @@ def long_running_execution_command(client: Client, params: dict):
 
         except Exception as e:
             msg = f'Error occurred during long running loop: {e}'
+
+            # handle error give up
+            ctx, version = get_integration_context_with_version()
+            prev_err_msg = ctx.get(EXIT_ON_ERROR_MSG_CTX_KEY, '')
+            counter = int(ctx.get(EXIT_ON_ERROR_CNT_CTX_KEY, EXIT_ON_ERROR_COUNTER) if prev_err_msg == msg else EXIT_ON_ERROR_COUNTER)
             demisto.updateModuleHealth(msg)
             demisto.error(msg)
             demisto.error(traceback.format_exc())
+            if counter <= 0:
+                return_error(msg)
+            ctx[EXIT_ON_ERROR_CNT_CTX_KEY] = counter - 1
+            ctx[EXIT_ON_ERROR_MSG_CTX_KEY] = msg
+            safely_update_context_data(ctx, version=version, should_force_update=True)
 
         finally:
             print_debug_msg('Finished fetch loop')
