@@ -1305,7 +1305,7 @@ def get_fetch_detections(last_created_timestamp=None, filter_arg=None, offset: i
     if filter_arg:
         params['filter'] = filter_arg
     elif last_created_timestamp:
-        params['filter'] = f"created_timestamp:>'{last_created_timestamp}'"
+        params['filter'] = f"first_behavior:>'{last_created_timestamp}'"
     elif last_updated_timestamp:
         params['filter'] = f"date_updated:>'{last_updated_timestamp}'"
 
@@ -2526,7 +2526,7 @@ def fetch_incidents():
         incident_type = 'detection'
         fetch_query = demisto.params().get('fetch_query')
         if fetch_query:
-            fetch_query = f"created_timestamp:>'{start_fetch_time}'+{fetch_query}"
+            fetch_query = f"first_behavior:>'{start_fetch_time}'+{fetch_query}"
             detections_ids = demisto.get(get_fetch_detections(filter_arg=fetch_query, limit=fetch_limit), 'resources')
         else:
             detections_ids = demisto.get(get_fetch_detections(last_created_timestamp=start_fetch_time, limit=fetch_limit),
