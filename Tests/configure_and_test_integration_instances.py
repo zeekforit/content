@@ -29,7 +29,7 @@ from demisto_sdk.commands.validate.validate_manager import ValidateManager
 from ruamel import yaml
 
 from Tests.Marketplace.search_and_install_packs import search_and_install_packs_and_their_dependencies, \
-    upload_zipped_packs, install_all_content_packs_for_nightly
+    upload_zipped_packs, install_all_content_packs_for_nightly, get_env_var, MAX_WORKERS
 from Tests.Marketplace.marketplace_constants import Metadata
 from Tests.scripts.utils.log_util import install_logging
 from Tests.scripts.utils import logging_wrapper as logging
@@ -350,11 +350,14 @@ class Build(ABC):
         for server in self.servers:
             try:
                 hostname = self.cloud_machine if self.is_cloud else ''
+
                 _, flag = search_and_install_packs_and_their_dependencies(pack_ids=pack_ids,
+                                                                          commit_hash=get_env_var("LAST_UPLOAD_COMMIT"),
                                                                           client=server.client,
                                                                           hostname=hostname,
-                                                                          multithreading=multithreading,
-                                                                          production_bucket=production_bucket)
+                                                                          production_bucket=production_bucket,
+                                                                          max_workers=1 if multithreading else MAX_WORKERS
+                                                                          )
                 if not flag:
                     raise Exception('Failed to search and install packs.')
             except Exception:
@@ -1802,13 +1805,13 @@ def filter_new_to_marketplace_packs(build: Build, modified_pack_names: set[str])
     return first_added_to_marketplace
 
 
-def get_packs_to_install(build: Build) -> tuple[set[str], set[str]]:
+def get_packs_to_install(build: Build) -> tuple[list[str], set[str]]:
     """
     Return a set of packs to install only in the pre-update, and set to install in post-update.
     Args:
         build (Build): The build object.
     Returns:
-        (Set[str]): The set of the pack names that should not be installed.
+        (list[str]): The set of the pack names that should not be installed.
         (Set[str]): The set of the pack names that should be installed only in post update. (non-hidden packs or packs
                                                 that new to current marketplace)
     """
@@ -1828,7 +1831,7 @@ def get_packs_to_install(build: Build) -> tuple[set[str], set[str]]:
     packs_not_to_install_in_pre_update = set().union(*[packs_with_higher_min_version,
                                                        non_hidden_packs, first_added_to_marketplace])
     packs_to_install_in_pre_update = modified_packs_names - packs_not_to_install_in_pre_update
-    return packs_to_install_in_pre_update, non_hidden_packs
+    return list(packs_to_install_in_pre_update), non_hidden_packs
 
 
 def get_packs_with_higher_min_version(packs_names: set[str],
