@@ -351,14 +351,13 @@ class Build(ABC):
             try:
                 hostname = self.cloud_machine if self.is_cloud else ''
 
-                _, flag = search_and_install_packs_and_their_dependencies(pack_ids=pack_ids,
-                                                                          commit_hash=get_env_var("LAST_UPLOAD_COMMIT"),
-                                                                          client=server.client,
-                                                                          hostname=hostname,
-                                                                          production_bucket=production_bucket,
-                                                                          max_workers=1 if multithreading else MAX_WORKERS
-                                                                          )
-                if not flag:
+                _, success = search_and_install_packs_and_their_dependencies(pack_ids=pack_ids,
+                                                                             client=server.client,
+                                                                             hostname=hostname,
+                                                                             production_bucket=production_bucket,
+                                                                             multithreading=multithreading,
+                                                                             )
+                if not success:
                     raise Exception('Failed to search and install packs.')
             except Exception:
                 logging.exception('Failed to search and install packs')

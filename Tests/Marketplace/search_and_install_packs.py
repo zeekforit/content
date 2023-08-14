@@ -1,7 +1,6 @@
 import base64
 import contextlib
 import glob
-import itertools
 import json
 import os
 import re
@@ -23,13 +22,21 @@ from packaging.version import Version
 from requests import Session
 from urllib3.exceptions import HTTPWarning, HTTPError
 
-from Tests.Marketplace.marketplace_constants import IGNORED_FILES, PACKS_FOLDER, PACKS_FULL_PATH, GCPConfig, Metadata
+from Tests.Marketplace.marketplace_constants import (
+    IGNORED_FILES,
+    PACKS_FOLDER,
+    PACKS_FULL_PATH,
+    GCPConfig,
+    Metadata,
+)
 from Tests.Marketplace.marketplace_services import Pack, init_storage_client, load_json
 from Tests.Marketplace.upload_packs import download_and_extract_index
 from Tests.scripts.utils import logging_wrapper as logging
 
-PACK_PATH_VERSION_REGEX = re.compile(fr'^{GCPConfig.PRODUCTION_STORAGE_BASE_PATH}/[A-Za-z0-9-_.]+/(\d+\.\d+\.\d+)/[A-Za-z0-9-_.]'
-                                     r'+\.zip$')
+PACK_PATH_VERSION_REGEX = re.compile(
+    rf"^{GCPConfig.PRODUCTION_STORAGE_BASE_PATH}/[A-Za-z0-9-_.]+/(\d+\.\d+\.\d+)/[A-Za-z0-9-_.]"
+    r"+\.zip$"
+)
 WLM_TASK_FAILED_ERROR_CODE = 101704
 
 GITLAB_SESSION = Session()
@@ -37,8 +44,10 @@ CONTENT_PROJECT_ID = "2596"
 PACKS_DIR = "Packs"
 PACK_METADATA_FILE = Pack.USER_METADATA
 MAX_WORKERS = 130
-GITLAB_PACK_METADATA_URL = (f'{{gitlab_url}}/api/v4/projects/{CONTENT_PROJECT_ID}/repository/files/{PACKS_DIR}%2F{{pack_id}}%2F'
-                            f'{PACK_METADATA_FILE}')
+GITLAB_PACK_METADATA_URL = (
+    f"{{gitlab_url}}/api/v4/projects/{CONTENT_PROJECT_ID}/repository/files/{PACKS_DIR}%2F{{pack_id}}%2F"
+    f"{PACK_METADATA_FILE}"
+)
 
 
 @lru_cache
@@ -72,25 +81,37 @@ def fetch_pack_metadata_from_gitlab(pack_id: str, commit_hash: str) -> dict:
     Returns:
         dict: A dictionary containing pack's metadata.
     """
-    api_url = GITLAB_PACK_METADATA_URL.format(gitlab_url=get_env_var('CI_SERVER_URL'), pack_id=pack_id)
-    logging.debug(f"Fetching 'pack_metadata.json' file from GitLab for pack '{pack_id}'...")
-    response = GITLAB_SESSION.get(api_url,
-                                  headers={'PRIVATE-TOKEN': get_env_var('GITLAB_API_READ_TOKEN')},
-                                  params={'ref': commit_hash})
+    api_url = GITLAB_PACK_METADATA_URL.format(
+        gitlab_url=get_env_var("CI_SERVER_URL"), pack_id=pack_id
+    )
+    logging.debug(
+        f"Fetching 'pack_metadata.json' file from GitLab for pack '{pack_id}'..."
+    )
+    response = GITLAB_SESSION.get(
+        api_url,
+        headers={"PRIVATE-TOKEN": get_env_var("GITLAB_API_READ_TOKEN")},
+        params={"ref": commit_hash},
+    )
 
     if response.status_code != 200:
-        logging.error(f"Failed to fetch pack metadata from GitLab for pack '{pack_id}'.\n"
-                      f"Response code: {response.status_code}\nResponse body: {response.text}")
+        logging.error(
+            f"Failed to fetch pack metadata from GitLab for pack '{pack_id}'.\n"
+            f"Response code: {response.status_code}\nResponse body: {response.text}"
+        )
         response.raise_for_status()
 
-    file_data_b64 = response.json()['content']
-    file_data = base64.b64decode(file_data_b64).decode('utf-8')
+    file_data_b64 = response.json()["content"]
+    file_data = base64.b64decode(file_data_b64).decode("utf-8")
 
     return json.loads(file_data)
 
 
-def is_pack_deprecated(pack_id: str, production_bucket: bool = True,
-                       commit_hash: str | None = None, pack_api_data: dict | None = None) -> bool:
+def is_pack_deprecated(
+    pack_id: str,
+    production_bucket: bool = True,
+    commit_hash: str | None = None,
+    pack_api_data: dict | None = None,
+) -> bool:
     """
     Check whether a pack is deprecated or not.
     If an error is encountered, and status can't be checked properly,
@@ -117,39 +138,55 @@ def is_pack_deprecated(pack_id: str, production_bucket: bool = True,
     if production_bucket:
         if pack_api_data:
             try:
-                return pack_api_data['extras']['pack'].get('deprecated', False)
+                return pack_api_data["extras"]["pack"].get("deprecated", False)
 
             except Exception as ex:
-                logging.error(f"Failed to parse API response data for '{pack_id}'.\n"
-                              f"API Data: {pack_api_data}\nError: {ex}")
+                logging.error(
+                    f"Failed to parse API response data for '{pack_id}'.\n"
+                    f"API Data: {pack_api_data}\nError: {ex}"
+                )
 
         elif commit_hash:
             try:
-                return fetch_pack_metadata_from_gitlab(pack_id=pack_id, commit_hash=commit_hash).get('hidden', False)
+                return fetch_pack_metadata_from_gitlab(
+                    pack_id=pack_id, commit_hash=commit_hash
+                ).get("hidden", False)
 
             except Exception as ex:
-                logging.error(f"Failed to fetch pack metadata from GitLab for pack '{pack_id}'.\nError: {ex}")
+                logging.error(
+                    f"Failed to fetch pack metadata from GitLab for pack '{pack_id}'.\nError: {ex}"
+                )
 
         else:
-            raise ValueError("Either 'master_commit_hash' or 'pack_api_data' must be provided.")
+            raise ValueError(
+                "Either 'master_commit_hash' or 'pack_api_data' must be provided."
+            )
 
     else:  # Check locally
         pack_metadata_path = Path(PACKS_FOLDER) / pack_id / PACK_METADATA_FILENAME
 
         if pack_metadata_path.is_file():
             try:
-                return tools.get_pack_metadata(str(pack_metadata_path)).get('hidden', False)
+                return tools.get_pack_metadata(str(pack_metadata_path)).get(
+                    "hidden", False
+                )
 
             except Exception as ex:
-                logging.error(f"Failed to open file '{pack_metadata_path}'.\nError: {ex}")
+                logging.error(
+                    f"Failed to open file '{pack_metadata_path}'.\nError: {ex}"
+                )
 
         else:
-            logging.warning(f"File '{pack_metadata_path}' could not be found, or isn't a file.")
+            logging.warning(
+                f"File '{pack_metadata_path}' could not be found, or isn't a file."
+            )
 
     # If we got here, it means that nothing was returned and an error was encountered
-    logging.warning(f"Deprecation status of '{pack_id}' could not be determined, "
-                    "and has been set to a default value of 'False'.\n"
-                    "Note that this might result in potential errors if it is deprecated.")
+    logging.warning(
+        f"Deprecation status of '{pack_id}' could not be determined, "
+        "and has been set to a default value of 'False'.\n"
+        "Note that this might result in potential errors if it is deprecated."
+    )
     return False
 
 
@@ -165,10 +202,15 @@ def get_latest_version_from_bucket(pack_id: str, production_bucket: Bucket) -> s
         The latest version of the pack as it is in the production bucket
     """
     pack_bucket_path = os.path.join(GCPConfig.PRODUCTION_STORAGE_BASE_PATH, pack_id)
-    logging.debug(f'Trying to get latest version for pack {pack_id} from bucket path {pack_bucket_path}')
+    logging.debug(
+        f"Trying to get latest version for pack {pack_id} from bucket path {pack_bucket_path}"
+    )
     # Adding the '/' in the end of the prefix to search for the exact pack id
-    pack_versions_paths = [f.name for f in production_bucket.list_blobs(prefix=f'{pack_bucket_path}/') if
-                           f.name.endswith('.zip')]
+    pack_versions_paths = [
+        f.name
+        for f in production_bucket.list_blobs(prefix=f"{pack_bucket_path}/")
+        if f.name.endswith(".zip")
+    ]
 
     pack_versions = []
     for path in pack_versions_paths:
@@ -177,11 +219,13 @@ def get_latest_version_from_bucket(pack_id: str, production_bucket: Bucket) -> s
             continue
         pack_versions.append(Version(versions[0]))
 
-    logging.debug(f'Found the following zips for {pack_id} pack: {pack_versions}')
+    logging.debug(f"Found the following zips for {pack_id} pack: {pack_versions}")
     if pack_versions:
         return str(max(pack_versions))
-    logging.error(f'Could not find any versions for pack {pack_id} in bucket path {pack_bucket_path}')
-    return ''
+    logging.error(
+        f"Could not find any versions for pack {pack_id} in bucket path {pack_bucket_path}"
+    )
+    return ""
 
 
 def get_pack_installation_request_data(pack_id: str, pack_version: str):
@@ -192,14 +236,13 @@ def get_pack_installation_request_data(pack_id: str, pack_version: str):
     :param pack_version: Version of the pack to add.
     :return: The request data part of the pack
     """
-    return {
-        'id': pack_id,
-        'version': pack_version
-    }
+    return {"id": pack_id, "version": pack_version}
 
 
-def install_all_content_packs_for_nightly(client: demisto_client, host: str, service_account: str):
-    """ Iterates over the packs currently located in the Packs directory. Wrapper for install_packs.
+def install_all_content_packs_for_nightly(
+    client: demisto_client, host: str, service_account: str
+):
+    """Iterates over the packs currently located in the Packs directory. Wrapper for install_packs.
     Retrieving the latest version of each pack from the production bucket.
 
     :param client: Demisto-py client to connect to the server.
@@ -224,14 +267,21 @@ def install_all_content_packs_for_nightly(client: demisto_client, host: str, ser
         if pack_id not in IGNORED_FILES:
             pack_version = get_latest_version_from_bucket(pack_id, production_bucket)
             if pack_version:
-                all_packs.append(get_pack_installation_request_data(pack_id, pack_version))
+                all_packs.append(
+                    get_pack_installation_request_data(pack_id, pack_version)
+                )
     install_packs(client, host, all_packs)
 
 
-def install_all_content_packs_from_build_bucket(client: demisto_client, host: str, server_version: str,
-                                                bucket_packs_root_path: str, service_account: str,
-                                                extract_destination_path: str):
-    """ Iterates over the packs currently located in the Build bucket. Wrapper for install_packs.
+def install_all_content_packs_from_build_bucket(
+    client: demisto_client,
+    host: str,
+    server_version: str,
+    bucket_packs_root_path: str,
+    service_account: str,
+    extract_destination_path: str,
+):
+    """Iterates over the packs currently located in the Build bucket. Wrapper for install_packs.
     Retrieving the metadata of the latest version of each pack from the index.zip of the build bucket.
 
     :param client: Demisto-py client to connect to the server.
@@ -243,36 +293,53 @@ def install_all_content_packs_from_build_bucket(client: demisto_client, host: st
     :return: None. Prints the response from the server in the build.
     """
     all_packs = []
-    logging.debug(f"Installing all content packs in server {host} from packs path {bucket_packs_root_path}")
+    logging.debug(
+        f"Installing all content packs in server {host} from packs path {bucket_packs_root_path}"
+    )
 
     storage_client = init_storage_client(service_account)
     build_bucket = storage_client.bucket(GCPConfig.CI_BUILD_BUCKET)
-    index_folder_path, _, _ = download_and_extract_index(build_bucket, extract_destination_path, bucket_packs_root_path)
+    index_folder_path, _, _ = download_and_extract_index(
+        build_bucket, extract_destination_path, bucket_packs_root_path
+    )
 
     for pack_id in os.listdir(index_folder_path):
         if Path(os.path.join(index_folder_path, pack_id)).is_dir():
             metadata_path = os.path.join(index_folder_path, pack_id, Pack.METADATA)
             pack_metadata = load_json(metadata_path)
-            if 'partnerId' in pack_metadata:  # not installing private packs
+            if "partnerId" in pack_metadata:  # not installing private packs
                 continue
-            pack_version = pack_metadata.get(Metadata.CURRENT_VERSION, Metadata.SERVER_DEFAULT_MIN_VERSION)
-            server_min_version = pack_metadata.get(Metadata.SERVER_MIN_VERSION, Metadata.SERVER_DEFAULT_MIN_VERSION)
+            pack_version = pack_metadata.get(
+                Metadata.CURRENT_VERSION, Metadata.SERVER_DEFAULT_MIN_VERSION
+            )
+            server_min_version = pack_metadata.get(
+                Metadata.SERVER_MIN_VERSION, Metadata.SERVER_DEFAULT_MIN_VERSION
+            )
             hidden = pack_metadata.get(Metadata.HIDDEN, False)
             # Check if the server version is greater than the minimum server version required for this pack or if the
             # pack is hidden (deprecated):
-            if ('Master' in server_version or Version(server_version) >= Version(server_min_version)) and not hidden:
+            if (
+                "Master" in server_version
+                or Version(server_version) >= Version(server_min_version)
+            ) and not hidden:
                 logging.debug(f"Appending pack id {pack_id}")
-                all_packs.append(get_pack_installation_request_data(pack_id, pack_version))
+                all_packs.append(
+                    get_pack_installation_request_data(pack_id, pack_version)
+                )
             else:
-                reason = 'Is hidden' if hidden else f'min server version is {server_min_version}'
-                logging.debug(f'Pack: {pack_id} with version: {pack_version} will not be installed on {host}. '
-                              f'Pack {reason}.')
+                reason = (
+                    "Is hidden"
+                    if hidden
+                    else f"min server version is {server_min_version}"
+                )
+                logging.debug(
+                    f"Pack: {pack_id} with version: {pack_version} will not be installed on {host}. "
+                    f"Pack {reason}."
+                )
     return install_packs(client, host, all_packs)
 
 
-def upload_zipped_packs(client: demisto_client,
-                        host: str,
-                        pack_path: str):
+def upload_zipped_packs(client: demisto_client, host: str, pack_path: str):
     """
     Install packs from zip file.
 
@@ -281,37 +348,44 @@ def upload_zipped_packs(client: demisto_client,
         host (str): The server URL.
         pack_path (str): path to pack zip.
     """
-    header_params = {
-        'Content-Type': 'multipart/form-data'
-    }
-    auth_settings = ['api_key', 'csrf_token', 'x-xdr-auth-id']
+    header_params = {"Content-Type": "multipart/form-data"}
+    auth_settings = ["api_key", "csrf_token", "x-xdr-auth-id"]
     file_path = str(Path(pack_path).resolve())
-    files = {'file': file_path}
+    files = {"file": file_path}
 
-    logging.info(f'Making "POST" request to server {host} - to install all packs from file {pack_path}')
+    logging.info(
+        f'Making "POST" request to server {host} - to install all packs from file {pack_path}'
+    )
 
     # make the pack installation request
     try:
-        response_data, status_code, _ = client.api_client.call_api(resource_path='/contentpacks/installed/upload',
-                                                                   method='POST',
-                                                                   auth_settings=auth_settings,
-                                                                   header_params=header_params, files=files,
-                                                                   response_type='object')
+        response_data, status_code, _ = client.api_client.call_api(
+            resource_path="/contentpacks/installed/upload",
+            method="POST",
+            auth_settings=auth_settings,
+            header_params=header_params,
+            files=files,
+            response_type="object",
+        )
 
         if 200 <= status_code < 300:
-            logging.info(f'All packs from file {pack_path} were successfully installed on server {host}')
+            logging.info(
+                f"All packs from file {pack_path} were successfully installed on server {host}"
+            )
         else:
-            message = response_data.get('message', '')
-            raise Exception(f'Failed to install packs - with status code {status_code}\n{message}')
+            message = response_data.get("message", "")
+            raise Exception(
+                f"Failed to install packs - with status code {status_code}\n{message}"
+            )
     except Exception:  # noqa E722
-        logging.exception('The request to install packs has failed.')
+        logging.exception("The request to install packs has failed.")
         sys.exit(1)
 
 
-def search_and_install_packs_and_their_dependencies_private(test_pack_path: str,
-                                                            pack_ids: list,
-                                                            client: demisto_client):
-    """ Searches for the packs from the specified list, searches their dependencies, and then installs them.
+def search_and_install_packs_and_their_dependencies_private(
+    test_pack_path: str, pack_ids: list, client: demisto_client
+):
+    """Searches for the packs from the specified list, searches their dependencies, and then installs them.
     Args:
         test_pack_path (str): Path of where the test packs are located.
         pack_ids (list): A list of the pack ids to search and install.
@@ -323,7 +397,7 @@ def search_and_install_packs_and_their_dependencies_private(test_pack_path: str,
     """
     host = client.api_client.configuration.host
 
-    logging.info(f'Starting to search and install packs in server: {host}')
+    logging.info(f"Starting to search and install packs in server: {host}")
 
     install_packs_private(client, host, pack_ids, test_pack_path)
 
@@ -338,14 +412,13 @@ def get_pack_id_from_error_with_gcp_path(error: str) -> str:
     Returns:
         str: The id of given pack.
     """
-    return error.split('/packs/')[1].split('.zip')[0].split('/')[0]
+    return error.split("/packs/")[1].split(".zip")[0].split("/")[0]
 
 
-def install_packs_private(client: demisto_client,
-                          host: str,
-                          pack_ids_to_install: list,
-                          test_pack_path: str):
-    """ Make a packs installation request.
+def install_packs_private(
+    client: demisto_client, host: str, pack_ids_to_install: list, test_pack_path: str
+):
+    """Make a packs installation request.
 
     Args:
         client (demisto_client): The configured client to use.
@@ -353,10 +426,12 @@ def install_packs_private(client: demisto_client,
         pack_ids_to_install (list): List of Pack IDs to install.
         test_pack_path (str): Path where test packs are located.
     """
-    install_packs_from_artifacts(client,
-                                 host,
-                                 pack_ids_to_install=pack_ids_to_install,
-                                 test_pack_path=test_pack_path)
+    install_packs_from_artifacts(
+        client,
+        host,
+        pack_ids_to_install=pack_ids_to_install,
+        test_pack_path=test_pack_path,
+    )
 
 
 def find_malformed_pack_id(body: str) -> list:
@@ -373,16 +448,23 @@ def find_malformed_pack_id(body: str) -> list:
     if body:
         with contextlib.suppress(json.JSONDecodeError):
             response_info = json.loads(body)
-            if error_info := response_info.get('error'):
+            if error_info := response_info.get("error"):
                 errors_info = [error_info]
             else:
                 # the errors are returned as a list of error
-                errors_info = response_info.get('errors', [])
-            malformed_pack_pattern = re.compile(r'invalid version [0-9.]+ for pack with ID ([\w_-]+)')
+                errors_info = response_info.get("errors", [])
+            malformed_pack_pattern = re.compile(
+                r"invalid version [0-9.]+ for pack with ID ([\w_-]+)"
+            )
             for error in errors_info:
-                if 'pack id: ' in error:
-                    malformed_ids.extend(error.split('pack id: ')[1].replace(']', '').replace('[', '').replace(
-                        ' ', '').split(','))
+                if "pack id: " in error:
+                    malformed_ids.extend(
+                        error.split("pack id: ")[1]
+                        .replace("]", "")
+                        .replace("[", "")
+                        .replace(" ", "")
+                        .split(",")
+                    )
                 else:
                     malformed_pack_id = malformed_pack_pattern.findall(str(error))
                     if malformed_pack_id and error:
@@ -402,12 +484,16 @@ def handle_malformed_pack_ids(malformed_pack_ids, packs_to_install):
         raises an error.
     """
     for malformed_pack_id in malformed_pack_ids:
-        if malformed_pack_id not in {pack['id'] for pack in packs_to_install}:
-            raise Exception(f'The pack {malformed_pack_id} has failed to install even '
-                            f'though it was not in the installation list')
+        if malformed_pack_id not in {pack["id"] for pack in packs_to_install}:
+            raise Exception(
+                f"The pack {malformed_pack_id} has failed to install even "
+                f"though it was not in the installation list"
+            )
 
 
-def install_packs_from_artifacts(client: demisto_client, host: str, test_pack_path: str, pack_ids_to_install: list):
+def install_packs_from_artifacts(
+    client: demisto_client, host: str, test_pack_path: str, pack_ids_to_install: list
+):
     """
     Installs all the packs located in the artifacts folder of the BitHub actions build. Please note:
     The server always returns a 200 status even if the pack was not installed.
@@ -425,25 +511,28 @@ def install_packs_from_artifacts(client: demisto_client, host: str, test_pack_pa
 
     for local_pack in local_packs:
         if any(pack_id in local_pack for pack_id in pack_ids_to_install):
-            logging.info(f'Installing the following pack: {local_pack}')
+            logging.info(f"Installing the following pack: {local_pack}")
             upload_zipped_packs(client=client, host=host, pack_path=local_pack)
 
 
 def get_error_ids(body: str) -> set[str]:
     with contextlib.suppress(json.JSONDecodeError):
         response_info = json.loads(body)
-        return {error["id"] for error in response_info.get("errors", []) if "id" in error}
+        return {
+            error["id"] for error in response_info.get("errors", []) if "id" in error
+        }
     return set()
 
 
-def install_packs(client: demisto_client,
-                  host: str,
-                  packs_to_install: list,
-                  request_timeout: int = 3600,
-                  attempts_count: int = 5,
-                  sleep_interval: int = 60,
-                  ) -> list[dict] | None:
-    """ Make a packs installation request.
+def install_packs(
+    client: demisto_client,
+    host: str,
+    packs_to_install: list,
+    request_timeout: int = 3600,
+    attempts_count: int = 5,
+    sleep_interval: int = 60,
+) -> list[dict] | None:
+    """Make a packs installation request.
        If a pack fails to install due to malformed pack, this function catches the corrupted pack and call another
        request to install packs again, this time without the corrupted pack.
        If a pack fails to install due to timeout when sending a request to GCP,
@@ -458,32 +547,51 @@ def install_packs(client: demisto_client,
         sleep_interval (int): The sleep interval, in seconds, between install attempts.
     """
     if not packs_to_install:
-        logging.info("There are no packs to install on servers. Consolidating installation as success")
+        logging.info(
+            "There are no packs to install on servers. Consolidating installation as success"
+        )
         return []
     try:
         for attempt in range(attempts_count - 1, -1, -1):
             try:
-                logging.info(f"Installing packs {', '.join([p['id'] for p in packs_to_install])} on server {host}. "
-                             f"Attempt: {attempts_count - attempt}/{attempts_count}")
-                response, status_code, headers = demisto_client.generic_request_func(client,
-                                                                                     path='/contentpacks/marketplace/install',
-                                                                                     method='POST',
-                                                                                     body={'packs': packs_to_install,
-                                                                                           'ignoreWarnings': True},
-                                                                                     accept='application/json',
-                                                                                     _request_timeout=request_timeout,
-                                                                                     response_type='object')
+                logging.info(
+                    f"Installing packs {', '.join([p['id'] for p in packs_to_install])} on server {host}. "
+                    f"Attempt: {attempts_count - attempt}/{attempts_count}"
+                )
+                response, status_code, headers = demisto_client.generic_request_func(
+                    client,
+                    path="/contentpacks/marketplace/install",
+                    method="POST",
+                    body={"packs": packs_to_install, "ignoreWarnings": True},
+                    accept="application/json",
+                    _request_timeout=request_timeout,
+                    response_type="object",
+                )
 
                 if 200 <= status_code < 300 and status_code != 204:
-                    packs_data = [{'ID': pack.get('id'), 'CurrentVersion': pack.get('currentVersion')} for pack in response]
-                    logging.success(f'Packs were successfully installed on server {host}')
-                    logging.debug(f'The packs that were successfully installed on server {host}:\n{packs_data}')
+                    packs_data = [
+                        {
+                            "ID": pack.get("id"),
+                            "CurrentVersion": pack.get("currentVersion"),
+                        }
+                        for pack in response
+                    ]
+                    logging.success(
+                        f"Packs were successfully installed on server {host}"
+                    )
+                    logging.debug(
+                        f"The packs that were successfully installed on server {host}:\n{packs_data}"
+                    )
                     return packs_data
 
                 if not attempt:
-                    raise Exception(f"Got bad status code: {status_code}, headers: {headers}")
+                    raise Exception(
+                        f"Got bad status code: {status_code}, headers: {headers}"
+                    )
 
-                logging.warning(f"Got bad status code: {status_code} from the server, headers:{headers}")
+                logging.warning(
+                    f"Got bad status code: {status_code} from the server, headers:{headers}"
+                )
 
             except ApiException as ex:
                 if malformed_ids := find_malformed_pack_id(ex.body):
@@ -492,42 +600,69 @@ def install_packs(client: demisto_client,
                         raise Exception(f"malformed packs: {malformed_ids}") from ex
 
                     # We've more attempts, retrying without tho malformed packs.
-                    logging.error(f"Unable to install malformed packs: {malformed_ids}, retrying without them.")
-                    packs_to_install = [pack for pack in packs_to_install if pack['id'] not in malformed_ids]
+                    logging.error(
+                        f"Unable to install malformed packs: {malformed_ids}, retrying without them."
+                    )
+                    packs_to_install = [
+                        pack
+                        for pack in packs_to_install
+                        if pack["id"] not in malformed_ids
+                    ]
 
-                if (error_ids := get_error_ids(ex.body)) and WLM_TASK_FAILED_ERROR_CODE in error_ids:
+                if (
+                    error_ids := get_error_ids(ex.body)
+                ) and WLM_TASK_FAILED_ERROR_CODE in error_ids:
                     # If we got this error code, it means that the modeling rules are not valid, exiting install flow.
-                    raise Exception(f"Got [{WLM_TASK_FAILED_ERROR_CODE}] error code - Modeling rules and Dataset validations "
-                                    f"failed. Please look at GCP logs to understand why it failed.") from ex
+                    raise Exception(
+                        f"Got [{WLM_TASK_FAILED_ERROR_CODE}] error code - Modeling rules and Dataset validations "
+                        f"failed. Please look at GCP logs to understand why it failed."
+                    ) from ex
 
-                if not attempt:  # exhausted all attempts, understand what happened and exit.
-                    if 'timeout awaiting response' in ex.body:
-                        if '/packs/' in ex.body:
+                if (
+                    not attempt
+                ):  # exhausted all attempts, understand what happened and exit.
+                    if "timeout awaiting response" in ex.body:
+                        if "/packs/" in ex.body:
                             pack_id = get_pack_id_from_error_with_gcp_path(ex.body)
-                            raise Exception(f"timeout awaiting response headers while trying to install pack {pack_id}") from ex
+                            raise Exception(
+                                f"timeout awaiting response headers while trying to install pack {pack_id}"
+                            ) from ex
 
-                        raise Exception("timeout awaiting response headers while trying to install, "
-                                        "couldn't determine pack id.") from ex
+                        raise Exception(
+                            "timeout awaiting response headers while trying to install, "
+                            "couldn't determine pack id."
+                        ) from ex
 
-                    if 'Item not found' in ex.body:
-                        raise Exception(f'Item not found error, headers:{ex.headers}.') from ex
+                    if "Item not found" in ex.body:
+                        raise Exception(
+                            f"Item not found error, headers:{ex.headers}."
+                        ) from ex
 
                     # Unknown exception reason, re-raise.
-                    raise Exception(f"Got {ex.status} from server, message:{ex.body}, headers:{ex.headers}") from ex
+                    raise Exception(
+                        f"Got {ex.status} from server, message:{ex.body}, headers:{ex.headers}"
+                    ) from ex
             except (HTTPError, HTTPWarning) as http_ex:
                 if not attempt:
-                    raise Exception("Failed to perform http request to the server") from http_ex
+                    raise Exception(
+                        "Failed to perform http request to the server"
+                    ) from http_ex
 
             # There are more attempts available, sleep and retry.
-            logging.debug(f"Failed to install packs: {packs_to_install}. Sleeping for {sleep_interval} seconds.")
+            logging.debug(
+                f"Failed to install packs: {packs_to_install}. Sleeping for {sleep_interval} seconds."
+            )
             time.sleep(sleep_interval)
     except Exception as e:
-        logging.exception(f'The request to install packs: {packs_to_install} has failed. Additional info: {str(e)}')
+        logging.exception(
+            f"The request to install packs: {packs_to_install} has failed. Additional info: {str(e)}"
+        )
     return None
 
 
-def create_dependencies_data_structure(response_data: dict, dependants_ids: list,
-                                       checked_packs: list):
+def create_dependencies_data_structure(
+    response_data: dict, dependants_ids: list, checked_packs: list
+):
     """
     Recursively create packs' dependencies data structure for installation requests (only required and uninstalled).
 
@@ -539,25 +674,33 @@ def create_dependencies_data_structure(response_data: dict, dependants_ids: list
     next_call_dependants_ids = []
     dependencies_data: list = []
     for dependency in response_data:
-        dependants = dependency.get('dependants', {})
+        dependants = dependency.get("dependants", {})
 
         for dependant in dependants:
-            if (dependants[dependant].get('level', '') == 'required'
-                    and dependency['id'] not in checked_packs and dependant in dependants_ids):
+            if (
+                dependants[dependant].get("level", "") == "required"
+                and dependency["id"] not in checked_packs
+                and dependant in dependants_ids
+            ):
                 dependencies_data.append(dependency)
-                next_call_dependants_ids.append(dependency['id'])
-                checked_packs.append(dependency['id'])
+                next_call_dependants_ids.append(dependency["id"])
+                checked_packs.append(dependency["id"])
 
     if next_call_dependants_ids:
-        dependencies_data.extend(create_dependencies_data_structure(response_data, next_call_dependants_ids, checked_packs))
+        dependencies_data.extend(
+            create_dependencies_data_structure(
+                response_data, next_call_dependants_ids, checked_packs
+            )
+        )
     return dependencies_data
 
 
-def get_pack_dependencies(client: demisto_client,
-                          pack_id: str,
-                          attempts_count: int = 5,
-                          sleep_interval: int = 60,
-                          ) -> dict | None:
+def get_pack_dependencies(
+    client: demisto_client,
+    pack_id: str,
+    attempts_count: int = 5,
+    sleep_interval: int = 60,
+) -> dict | None:
     """
     Get pack's required dependencies.
 
@@ -572,32 +715,42 @@ def get_pack_dependencies(client: demisto_client,
     """
 
     for attempt in range(attempts_count - 1, -1, -1):
-        logging.debug(f"Fetching dependencies information for '{pack_id}' using Marketplace API "
-                      f"(Attempt {attempts_count - attempt}/{attempts_count})")
+        logging.debug(
+            f"Fetching dependencies information for '{pack_id}' using Marketplace API "
+            f"(Attempt {attempts_count - attempt}/{attempts_count})"
+        )
         try:
             response, _, _ = demisto_client.generic_request_func(
                 client,
                 path="/contentpacks/marketplace/search/dependencies",
-                method='POST',
-                body=[{"id": pack_id}],  # Not specifying a "version" key will return the latest version of the pack.
-                accept='application/json',
+                method="POST",
+                body=[
+                    {"id": pack_id}
+                ],  # Not specifying a "version" key will return the latest version of the pack.
+                accept="application/json",
                 _request_timeout=None,
-                response_type='object',
+                response_type="object",
             )
 
-            logging.debug(f"Succeeded to fetch dependencies for pack '{pack_id}'.\nResponse: '{json.dumps(response)}'")
+            logging.debug(
+                f"Succeeded to fetch dependencies for pack '{pack_id}'.\nResponse: '{json.dumps(response)}'"
+            )
             return response
 
         except Exception as ex:
             if isinstance(ex, ApiException):
-                logging.warning(f"API request to fetch dependencies of pack '{pack_id}' has failed.\n"
-                                f"Response code '{ex.status}'\nResponse: '{ex.body}'\nResponse Headers: '{ex.headers}'")
+                logging.warning(
+                    f"API request to fetch dependencies of pack '{pack_id}' has failed.\n"
+                    f"Response code '{ex.status}'\nResponse: '{ex.body}'\nResponse Headers: '{ex.headers}'"
+                )
 
             elif isinstance(ex, HTTPError | HTTPWarning):
                 logging.warning(f"Failed to perform HTTP request : {ex}")
 
             else:
-                logging.warning(f"API call to fetch dependencies of '{pack_id}' has failed.\nError: {ex}.")
+                logging.warning(
+                    f"API call to fetch dependencies of '{pack_id}' has failed.\nError: {ex}."
+                )
                 logging.debug(f"Stack trace:\n{traceback.format_exc()}")
 
             if attempt:  # There are remaining retry attempts
@@ -611,11 +764,12 @@ def get_pack_dependencies(client: demisto_client,
     return None
 
 
-def search_pack_and_its_dependencies(client: demisto_client,
-                                     pack_id: str,
-                                     production_bucket: bool,
-                                     commit_hash: str,
-                                     ) -> tuple[str, list[dict] | None]:
+def search_pack_and_its_dependencies(
+    client: demisto_client,
+    pack_id: str,
+    production_bucket: bool,
+    commit_hash: str,
+) -> tuple[str, list[dict] | None]:
     """
     Update 'packs_to_install' (a pointer to a list that's reused and updated by the function on every iteration)
     with 'pack_id' and its dependencies, if 'pack_id' is not deprecated.
@@ -632,8 +786,12 @@ def search_pack_and_its_dependencies(client: demisto_client,
         commit_hash (str): Commit hash to use for checking pack's deprecations status if GitLab's API is used.
             If 'pack_api_data' is not provided, will be used for fetching 'pack_metadata.json' file from GitLab.
     """
-    if is_pack_deprecated(pack_id=pack_id, production_bucket=production_bucket, commit_hash=commit_hash):
-        logging.warning(f"Pack '{pack_id}' is deprecated (hidden) and will not be installed.")
+    if is_pack_deprecated(
+        pack_id=pack_id, production_bucket=production_bucket, commit_hash=commit_hash
+    ):
+        logging.warning(
+            f"Pack '{pack_id}' is deprecated (hidden) and will not be installed."
+        )
         return pack_id, None  # Don't install deprecated packs
 
     api_data = get_pack_dependencies(client=client, pack_id=pack_id)
@@ -641,88 +799,146 @@ def search_pack_and_its_dependencies(client: demisto_client,
     if not api_data:
         return pack_id, []
 
-    dependencies: list[dict] = create_dependencies_data_structure(response_data=api_data.get('dependencies', []),
-                                                                  dependants_ids=[pack_id],
-                                                                  checked_packs=[pack_id])
+    dependencies_data: list[dict] = create_dependencies_data_structure(
+        response_data=api_data.get("dependencies", []),
+        dependants_ids=[pack_id],
+        checked_packs=[pack_id],
+    )
+    pack_api_data = api_data["packs"][0]
+    current_packs_to_install = [pack_api_data]
 
-    if dependencies:
-        logging.debug(f"Found dependencies for '{pack_id}': {[dependency['id'] for dependency in dependencies]}")
+    if dependencies_data:
+        logging.debug(
+            f"Found dependencies for '{pack_id}': {[dependency['id'] for dependency in dependencies_data]}"
+        )
 
-        for dependency in dependencies:
-            if is_pack_deprecated(pack_id=dependency['id'], production_bucket=production_bucket, pack_api_data=dependency):
-                logging.critical(f"Pack '{pack_id}' depends on pack '{dependency['id']}' which is a deprecated pack.")
+        for dependency in dependencies_data:
+            if is_pack_deprecated(
+                pack_id=dependency["id"],
+                production_bucket=production_bucket,
+                pack_api_data=dependency,
+            ):
+                logging.critical(
+                    f"Pack '{pack_id}' depends on pack '{dependency['id']}' which is a deprecated pack."
+                )
                 return pack_id, None
+            else:
+                current_packs_to_install.append(dependency)
+
+    dependencies = [
+        get_pack_installation_request_data(
+            pack_id=pack["id"],
+            pack_version=pack["extras"]["pack"]["currentVersion"],
+        )
+        for pack in current_packs_to_install
+    ]
     return pack_id, dependencies
 
 
-def flatten_dependencies(pack_dependencies, dependencies_for_packs):
-    return itertools.chain.from_iterable(flatten_dependencies([pack_dependency], dependencies_for_packs)
-                                         for pack_dependency in pack_dependencies)
+def flatten_dependencies(pack_id, pack_dependencies, all_packs_dependencies):
+    dependencies_flatten = []
+    for pack_dependency in pack_dependencies:
+        if pack_dependency["id"] != pack_id:
+            dependencies_flatten.extend(
+                flatten_dependencies(pack_id, pack_dependency, all_packs_dependencies)
+            )
+    return dependencies_flatten
 
 
-def search_and_install_packs_and_their_dependencies(pack_ids: list,
-                                                    commit_hash: str,
-                                                    client: demisto_client, hostname: str | None = None,
-                                                    production_bucket: bool = True,
-                                                    max_workers: int = MAX_WORKERS,
-                                                    max_packs_to_install: int = 20):
+def search_and_install_packs_and_their_dependencies(
+    pack_ids: list,
+    client: demisto_client,
+    hostname: str | None = None,
+    production_bucket: bool = True,
+    multithreading=False,
+    max_packs_to_install: int = 20,
+) -> tuple[set[str], bool]:
     """
     Searches for the packs from the specified list, searches their dependencies, and then
     installs them.
 
     Args:
+        multithreading(bool): Either to run the search process with multiple threads.
         max_packs_to_install (int): The maximum number of packs to install in one iteration.
-        commit_hash (str): A commit hash to fetch the metadata file from.
-        max_workers (int): The maximum number of workers in the thread pool.
         pack_ids (list): A list of the pack ids to search and install.
         client (demisto_client): The client to connect to.
         hostname (str): Hostname of instance. Using for logs.
         production_bucket (bool): Whether the installation is in post update mode. Defaults to False.
     Returns (list, bool):
-        A list of the installed packs' ids, or an empty list if is_nightly == True.
+        A list of the installed packs' ids.
         A flag that indicates if the operation succeeded or not.
     """
     host = hostname or client.api_client.configuration.host
+    commit_hash: str = get_env_var("LAST_UPLOAD_COMMIT")
 
-    logging.info(f'Starting search for packs to install on: {host}')
+    logging.info(f"Starting search for packs to install on: {host}")
     start_time = datetime.utcnow()
     success = True
-    packs_dependencies = {}
-    with ThreadPoolExecutor(max_workers=max_workers) as pool:
-        futures = [pool.submit(search_pack_and_its_dependencies, pack_id=pack_id, client=client,
-                               production_bucket=production_bucket, commit_hash=commit_hash) for pack_id in pack_ids]
+    all_packs_dependencies = {}
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS if multithreading else 1) as pool:
+        futures = [
+            pool.submit(
+                search_pack_and_its_dependencies,
+                pack_id=pack_id,
+                client=client,
+                production_bucket=production_bucket,
+                commit_hash=commit_hash,
+            )
+            for pack_id in pack_ids
+        ]
 
         for future in as_completed(futures):
             try:
                 pack_id, dependencies_for_packs = future.result()
                 if dependencies_for_packs is not None:
-                    packs_dependencies[pack_id] = dependencies_for_packs
+                    all_packs_dependencies[pack_id] = dependencies_for_packs
                 else:
-                    logging.error(f"Failed to search for dependencies of pack '{pack_id}'")
+                    logging.error(
+                        f"Failed to search for dependencies of pack '{pack_id}'"
+                    )
                     success = False
             except Exception:  # noqa E722
-                logging.error(f"Failed to search for dependencies of pack '{pack_id}'")
+                logging.error(
+                    f"Failed to search for dependencies of pack '{pack_ids[futures.index(future)]}'"
+                )
                 success = False
 
     if not success:
-        logging.critical("failure while searching for packs dependencies, installing packs regardless.")
+        logging.critical(
+            "failure while searching for packs dependencies, installing packs regardless."
+        )
 
     logging.info(f"starting to install packs on {host}")
     # Gather all dependencies and install them in batches.
-    already_installed: set[str] = set()
+    packs_installed_successfully: set[str] = set()
     packs_to_install = []
-    for i, pack_dependencies in enumerate(packs_dependencies.values()):
-        packs = flatten_dependencies(pack_dependencies, dependencies_for_packs)
-        packs_to_install.extend([pack for pack in packs if pack["ID"] not in already_installed])
+    for i, (pack_id, pack_dependencies) in enumerate(all_packs_dependencies.items()):
+        packs = flatten_dependencies(pack_id, pack_dependencies, all_packs_dependencies)
+        packs_to_install.extend(
+            [pack for pack in packs if pack["ID"] not in packs_installed_successfully]
+        )
 
-        if len(packs_to_install) >= max_packs_to_install or i == len(packs_dependencies) - 1:
+        if (
+            len(packs_to_install) >= max_packs_to_install
+            or i == len(all_packs_dependencies) - 1
+        ):
             logging.info(f"Installing packs: {packs_to_install}")
             installed_packs = install_packs(client, host, packs_to_install)
             packs_to_install = []
             if installed_packs is not None:
-                already_installed.union({installed_pack["ID"] for installed_pack in installed_packs})
+                packs_installed_successfully.union(
+                    {installed_pack["ID"] for installed_pack in installed_packs}
+                )
             else:
                 success = False
-    logging.info(f"Finished {'successfully' if success else 'with errors'} installing packs on {host} took "
-                 f"{humanize.naturaldelta(datetime.utcnow() - start_time, minimum_unit='milliseconds')} seconds")
-    return success
+    if success:
+        logging.info(
+            f"Finished successfully, Installing packs on {host} took "
+            f"{humanize.naturaldelta(datetime.utcnow() - start_time, minimum_unit='milliseconds')} seconds"
+        )
+    else:
+        logging.critical(
+            f"Finished with errors, Installing packs on {host} took "
+            f"{humanize.naturaldelta(datetime.utcnow() - start_time, minimum_unit='milliseconds')} seconds"
+        )
+    return packs_installed_successfully, success
