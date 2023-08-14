@@ -29,7 +29,7 @@ from demisto_sdk.commands.validate.validate_manager import ValidateManager
 from ruamel import yaml
 
 from Tests.Marketplace.search_and_install_packs import search_and_install_packs_and_their_dependencies, \
-    upload_zipped_packs, install_all_content_packs_for_nightly, get_env_var, MAX_WORKERS
+    upload_zipped_packs, install_all_content_packs_for_nightly
 from Tests.Marketplace.marketplace_constants import Metadata
 from Tests.scripts.utils.log_util import install_logging
 from Tests.scripts.utils import logging_wrapper as logging
