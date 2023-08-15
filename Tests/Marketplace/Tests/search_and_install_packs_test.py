@@ -9,7 +9,7 @@ import timeout_decorator
 import Tests.Marketplace.search_and_install_packs as script
 from demisto_client.demisto_api.rest import ApiException
 from Tests.Marketplace.marketplace_constants import GCPConfig
-from google.cloud.storage import Blob
+from google.cloud.storage import Blob  # type: ignore
 
 
 def load_json_file(directory: str, file_name: str):
@@ -141,7 +141,8 @@ def test_search_and_install_packs_and_their_dependencies(mocker, use_multithread
 
     client = MockClient()
 
-    mocker.patch.object(script, 'install_packs')
+    mocker.patch.object(script, 'install_packs', return_value=
+        [{"ID": item} for item in ['HelloWorld', 'AzureSentinel', 'TestPack']])
     mocker.patch.object(demisto_client, 'generic_request_func', side_effect=mocked_generic_request_func)
     mocker.patch.object(script, 'is_pack_deprecated', return_value=False)  # Relevant only for post-update unit-tests
 
@@ -179,7 +180,7 @@ def test_search_and_install_packs_and_their_dependencies_with_error(mocker, erro
     """
     client = MockClient()
 
-    mocker.patch.object(script, 'install_packs')
+    mocker.patch.object(script, 'get_pack_dependencies', return_value=[{"ID": item} for item in ['HelloWorld']])
     mocker.patch.object(script, 'fetch_pack_metadata_from_gitlab', return_value={"hidden": False})
     mocker.patch.object(demisto_client, 'generic_request_func', side_effect=ApiException(status=error_code))
 

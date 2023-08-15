@@ -835,13 +835,18 @@ def search_pack_and_its_dependencies(
     return pack_id, dependencies
 
 
-def flatten_dependencies(pack_id, pack_dependencies, all_packs_dependencies):
+def flatten_dependencies(pack_id: str, pack_dependencies: list[dict], all_packs_dependencies: dict[str, list[dict]]):
     dependencies_flatten = []
     for pack_dependency in pack_dependencies:
         if pack_dependency["id"] != pack_id:
             dependencies_flatten.extend(
-                flatten_dependencies(pack_id, pack_dependency, all_packs_dependencies)
+                flatten_dependencies(
+                    pack_dependency["id"],
+                    all_packs_dependencies.get(pack_dependency["id"], []),
+                    all_packs_dependencies,
+                )
             )
+        dependencies_flatten.append(pack_dependency)
     return dependencies_flatten
 
 
@@ -915,7 +920,7 @@ def search_and_install_packs_and_their_dependencies(
     for i, (pack_id, pack_dependencies) in enumerate(all_packs_dependencies.items()):
         packs = flatten_dependencies(pack_id, pack_dependencies, all_packs_dependencies)
         packs_to_install.extend(
-            [pack for pack in packs if pack["ID"] not in packs_installed_successfully]
+            [pack for pack in packs if pack["id"] not in packs_installed_successfully]
         )
 
         if (
@@ -926,9 +931,7 @@ def search_and_install_packs_and_their_dependencies(
             installed_packs = install_packs(client, host, packs_to_install)
             packs_to_install = []
             if installed_packs is not None:
-                packs_installed_successfully.union(
-                    {installed_pack["ID"] for installed_pack in installed_packs}
-                )
+                packs_installed_successfully |= {installed_pack["ID"] for installed_pack in installed_packs}
             else:
                 success = False
     if success:
