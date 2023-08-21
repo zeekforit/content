@@ -88,6 +88,7 @@ def download_logs(ssh: SSHClient, server_ip: str, artifacts_dir: str, role: str)
 def destroy_server(artifacts_dir: str, readable_role: str, role: str, server_ip: str, tests_path: Path,
                    time_to_live: int) -> bool:
     success = True
+
     with SSHClient() as ssh:
         try:
             ssh.load_system_host_keys()
