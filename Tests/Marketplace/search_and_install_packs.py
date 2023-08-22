@@ -192,7 +192,7 @@ def is_pack_deprecated(
 
 def get_latest_version_from_bucket(pack_id: str, production_bucket: Bucket) -> str:
     """
-    Retrieves the latest version of pack in the bucket
+    Retrieves the latest version of pack in a production bucket
 
     Args:
         pack_id (str): The pack id to retrieve the latest version
@@ -203,7 +203,7 @@ def get_latest_version_from_bucket(pack_id: str, production_bucket: Bucket) -> s
     """
     pack_bucket_path = os.path.join(GCPConfig.PRODUCTION_STORAGE_BASE_PATH, pack_id)
     logging.debug(
-        f"Trying to get latest version for pack {pack_id} from bucket path {pack_bucket_path}"
+        f"Trying to get the latest version of pack {pack_id} from bucket path {pack_bucket_path}"
     )
     # Adding the '/' in the end of the prefix to search for the exact pack id
     pack_versions_paths = [
@@ -219,7 +219,7 @@ def get_latest_version_from_bucket(pack_id: str, production_bucket: Bucket) -> s
             continue
         pack_versions.append(Version(versions[0]))
 
-    logging.debug(f"Found the following zips for {pack_id} pack: {pack_versions}")
+    logging.debug(f"Found the following versions for pack {pack_id}: {pack_versions}")
     if pack_versions:
         return str(max(pack_versions))
     logging.error(
@@ -260,7 +260,7 @@ def install_all_content_packs_for_nightly(
     # Add deprecated packs to IGNORED_FILES list:
     for pack_id in os.listdir(PACKS_FULL_PATH):
         if is_pack_deprecated(pack_id=pack_id, production_bucket=False):
-            logging.debug(f'Skipping installation of hidden pack "{pack_id}"')
+            logging.debug(f'Skipping installation of deprecated pack "{pack_id}"')
             IGNORED_FILES.append(pack_id)
 
     for pack_id in os.listdir(PACKS_FULL_PATH):
@@ -270,6 +270,7 @@ def install_all_content_packs_for_nightly(
                 all_packs.append(
                     get_pack_installation_request_data(pack_id, pack_version)
                 )
+                # FIXME add logging logging.debug(f'Skipping installation of ignored pack "{pack_id}"')
     install_packs(client, host, all_packs)
 
 
@@ -290,7 +291,7 @@ def install_all_content_packs_from_build_bucket(
     :param bucket_packs_root_path: The prefix to the root of packs in the bucket
     :param service_account: Google Service Account
     :param extract_destination_path: the full path of extract folder for the index.
-    :return: None. Prints the response from the server in the build.
+    :return: None. Prints the response from the server in the log.
     """
     all_packs = []
     logging.debug(
@@ -308,6 +309,7 @@ def install_all_content_packs_from_build_bucket(
             metadata_path = os.path.join(index_folder_path, pack_id, Pack.METADATA)
             pack_metadata = load_json(metadata_path)
             if "partnerId" in pack_metadata:  # not installing private packs
+                logging.debug(f'Skipping installation of partner pack "{pack_id}"')
                 continue
             pack_version = pack_metadata.get(
                 Metadata.CURRENT_VERSION, Metadata.SERVER_DEFAULT_MIN_VERSION
@@ -330,7 +332,7 @@ def install_all_content_packs_from_build_bucket(
                 reason = (
                     "Is hidden"
                     if hidden
-                    else f"min server version is {server_min_version}"
+                    else f"min server version is {server_min_version} and server version is {server_version}"
                 )
                 logging.debug(
                     f"Pack: {pack_id} with version: {pack_version} will not be installed on {host}. "
@@ -368,17 +370,17 @@ def upload_zipped_packs(client: demisto_client, host: str, pack_path: str):
             response_type="object",
         )
 
-        if 200 <= status_code < 300:
+        if 200 <= status_code < 300:  # FIXME exclude 204
             logging.info(
                 f"All packs from file {pack_path} were successfully installed on server {host}"
             )
         else:
             message = response_data.get("message", "")
             raise Exception(
-                f"Failed to install packs - with status code {status_code}\n{message}"
+                f"Failed to install packs from file {pack_path} with status code {status_code}\n{message}"
             )
     except Exception:  # noqa E722
-        logging.exception("The request to install packs has failed.")
+        logging.exception("The request to install packs from file {pack_path} has failed. Exiting.")
         sys.exit(1)
 
 
@@ -453,12 +455,12 @@ def find_malformed_pack_id(body: str) -> list:
             else:
                 # the errors are returned as a list of error
                 errors_info = response_info.get("errors", [])
-            malformed_pack_pattern = re.compile(
+            malformed_pack_pattern = re.compile( # FIXME move to const
                 r"invalid version [0-9.]+ for pack with ID ([\w_-]+)"
             )
             for error in errors_info:
                 if "pack id: " in error:
-                    malformed_ids.extend(
+                    malformed_ids.extend( # FIXME malformed error id
                         error.split("pack id: ")[1]
                         .replace("]", "")
                         .replace("[", "")
@@ -493,7 +495,7 @@ def handle_malformed_pack_ids(malformed_pack_ids, packs_to_install):
 
 def install_packs_from_artifacts(
     client: demisto_client, host: str, test_pack_path: str, pack_ids_to_install: list
-):
+): # FIXME typo in the next line BitHub
     """
     Installs all the packs located in the artifacts folder of the BitHub actions build. Please note:
     The server always returns a 200 status even if the pack was not installed.
@@ -548,7 +550,7 @@ def install_packs(
     """
     if not packs_to_install:
         logging.info(
-            "There are no packs to install on servers. Consolidating installation as success"
+            "There are no packs to install on server. Consolidating installation as success"
         )
         return []
     try:
@@ -615,7 +617,7 @@ def install_packs(
                     # If we got this error code, it means that the modeling rules are not valid, exiting install flow.
                     raise Exception(
                         f"Got [{WLM_TASK_FAILED_ERROR_CODE}] error code - Modeling rules and Dataset validations "
-                        f"failed. Please look at GCP logs to understand why it failed."
+                        f"failed. Please check the GCP logs to understand why it failed."
                     ) from ex
 
                 if (
@@ -671,7 +673,7 @@ def create_dependencies_data_structure(
         dependants_ids (list): A list of the dependant packs IDs.
         checked_packs (list): Required dependants that were already found.
     """
-    next_call_dependants_ids = []
+    next_call_dependants_ids: list = []
     dependencies_data: list = []
     for dependency in response_data:
         dependants = dependency.get("dependants", {})
@@ -733,7 +735,7 @@ def get_pack_dependencies(
             )
 
             logging.debug(
-                f"Succeeded to fetch dependencies for pack '{pack_id}'.\nResponse: '{json.dumps(response)}'"
+                f"Successfully fetched dependencies for pack '{pack_id}'.\nResponse: '{json.dumps(response)}'"
             )
             return response
 
@@ -764,7 +766,7 @@ def get_pack_dependencies(
     return None
 
 
-def search_pack_and_its_dependencies(
+def search_pack_and_its_dependencies(  # FIXME -> get_pack_and_its_dependencies
     client: demisto_client,
     pack_id: str,
     production_bucket: bool,
@@ -835,7 +837,7 @@ def search_pack_and_its_dependencies(
     return pack_id, dependencies
 
 
-def flatten_dependencies(pack_id: str, pack_dependencies: list[dict], all_packs_dependencies: dict[str, list[dict]]):
+def flatten_dependencies(pack_id: str, pack_dependencies: list[dict], all_packs_dependencies: dict[str, list[dict]]):  # FIXME add type hint
     dependencies_flatten = []
     for pack_dependency in pack_dependencies:
         if pack_dependency["id"] != pack_id:
@@ -876,7 +878,7 @@ def search_and_install_packs_and_their_dependencies(
     host = hostname or client.api_client.configuration.host
     commit_hash: str = get_env_var("LAST_UPLOAD_COMMIT")
 
-    logging.info(f"Starting search for packs to install on: {host}")
+    logging.info(f"Starting to search and install packs on server {host}")
     start_time = datetime.utcnow()
     success = True
     all_packs_dependencies = {}
@@ -910,10 +912,10 @@ def search_and_install_packs_and_their_dependencies(
 
     if not success:
         logging.critical(
-            "failure while searching for packs dependencies, installing packs regardless."
+            "Failure while searching for packs dependencies, installing packs regardless."
         )
 
-    logging.info(f"starting to install packs on {host}")
+    logging.info(f"Starting to install packs on {host}")
     # Gather all dependencies and install them in batches.
     packs_installed_successfully: set[str] = set()
     packs_to_install = []
