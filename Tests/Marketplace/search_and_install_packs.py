@@ -324,10 +324,10 @@ def install_all_content_packs_from_build_bucket(
             # Check if the server version is greater than the minimum server version required for this pack or if the
             # pack is hidden (deprecated):
             if (
-                "Master" in server_version
+                "master" in server_version.lower()
                 or Version(server_version) >= Version(server_min_version)
             ) and not hidden:
-                logging.debug(f"Appending pack id {pack_id}")
+                logging.debug(f"Appending pack id {pack_id} to the list of packs to install")
                 all_packs.append(
                     get_pack_installation_request_data(pack_id, pack_version)
                 )
@@ -596,7 +596,7 @@ def install_packs(
                         f"Packs were successfully installed on server {host}"
                     )
                     logging.debug(
-                        f"The packs that were successfully installed on server {host}:\n{packs_data}"
+                        f"The packs that were successfully installed on server {host}:\n{packs_data=}"
                     )
                     return packs_data
 
@@ -643,7 +643,7 @@ def install_packs(
                             "couldn't determine pack id."
                         ) from ex
 
-                    if "Item not found" in ex.body:
+                    if "item not found" in ex.body.lower():
                         raise Exception(
                             f"Item not found error, headers:{ex.headers}."
                         ) from ex
@@ -803,7 +803,7 @@ def get_pack_dependencies(
                 time.sleep(sleep_interval)
 
             else:  # No retry attempts remaining
-                logging.error(f"All {attempts_count} attempts have failed.")
+                logging.error(f"All {attempts_count} attempts to get pack {pack_id} dependencies have failed.")
                 break
 
     return None
@@ -866,7 +866,9 @@ def get_pack_and_its_dependencies(
                 logging.critical(
                     f"Pack '{pack_id}' depends on pack '{dependency['id']}' which is a deprecated pack."
                 )
-                return pack_id, None
+                return pack_id, None. # fixme: You return after the first deprecated dependency?
+Maybe collect all the non-deprecated dependencies, and return them? Would that work?
+Of course - Log all the deprecated dependencies.
             else:
                 current_packs_to_install.append(dependency)
 
@@ -893,7 +895,7 @@ def flatten_dependencies(pack_id: str, pack_dependencies: list[dict], all_packs_
     """
     dependencies_flatten = []
     for pack_dependency in pack_dependencies:
-        if pack_dependency["id"] != pack_id:
+        if pack_dependency["id"] != pack_id: # fixme Is there a need to check for duplicates?
             dependencies_flatten.extend(
                 flatten_dependencies(
                     pack_dependency["id"],
@@ -959,7 +961,8 @@ def search_and_install_packs_and_their_dependencies(
                     success = False
             except Exception:  # noqa E722
                 logging.error(
-                    f"Failed to search for dependencies of pack '{pack_ids[futures.index(future)]}'"
+                    f"Failed to search for dependencies of pack '{pack_ids[futures.index(future)]}'" # fixme No need to log the details of the exception that was raised?
+At least make it a different log message than the one just above (line 956)
                 )
                 success = False
 
@@ -974,7 +977,8 @@ def search_and_install_packs_and_their_dependencies(
     packs_to_install = []
     for i, (pack_id, pack_dependencies) in enumerate(all_packs_dependencies.items()):
         packs = flatten_dependencies(pack_id, pack_dependencies, all_packs_dependencies)
-        packs_to_install.extend(
+        packs_to_install.extend( # fixme If a pack failed to installed, it will not be in packs_installed_successfully, and thus you'll try to install it over and over again?
+Maybe add it to a set called packs_failed_install, and check that as well?
             [pack for pack in packs if pack["id"] not in packs_installed_successfully]
         )
 
