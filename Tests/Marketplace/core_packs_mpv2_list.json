@@ -21,7 +21,8 @@
     "Unit42Intel",
     "VirusTotal",
     "Whois",
-    "rasterize"
+    "rasterize",
+    "OktaAuth0"
   ],
   "update_core_packs_list": [
     "AutoFocus",
@@ -45,6 +46,7 @@
     "Unit42Intel",
     "VirusTotal",
     "Whois",
-    "rasterize"
+    "rasterize",
+    "OktaAuth0"
   ]
 }
