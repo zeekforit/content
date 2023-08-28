@@ -13,7 +13,7 @@ from functools import lru_cache
 from pathlib import Path
 
 import demisto_client
-import humanize
+import humanize  # noqa
 from demisto_client.demisto_api.rest import ApiException
 from demisto_sdk.commands.common import tools
 from demisto_sdk.commands.content_graph.common import PACK_METADATA_FILENAME
@@ -803,20 +803,22 @@ def get_pack_and_its_dependencies(
             f"Found dependencies for '{pack_id}': {[dependency['id'] for dependency in dependencies_data]}"
         )
 
+        deprecated_dependencies = []
         for dependency in dependencies_data:
             if is_pack_deprecated(
                 pack_id=dependency["id"],
                 production_bucket=production_bucket,
                 pack_api_data=dependency,
             ):
-                logging.critical(
-                    f"Pack '{pack_id}' depends on pack '{dependency['id']}' which is a deprecated pack."
-                )
-                return pack_id, None. # fixme: You return after the first deprecated dependency?
-Maybe collect all the non-deprecated dependencies, and return them? Would that work?
-Of course - Log all the deprecated dependencies.
+                deprecated_dependencies.append(dependency["id"])
             else:
                 current_packs_to_install.append(dependency)
+        if deprecated_dependencies:
+            logging.warning(
+                f"Pack '{pack_id}' has the following deprecated dependencies: {deprecated_dependencies}. "
+                f"Will not install pack."
+            )
+            return pack_id, None
 
     dependencies = [
         get_pack_installation_request_data(
@@ -828,7 +830,10 @@ Of course - Log all the deprecated dependencies.
     return pack_id, dependencies
 
 
-def flatten_dependencies(pack_id: str, pack_dependencies: list[dict], all_packs_dependencies: dict[str, list[dict]]) -> list[dict]:
+def flatten_dependencies(pack_id: str,
+                         pack_dependencies: list[dict],
+                         all_packs_dependencies: dict[str, list[dict]]
+                         ) -> list[dict]:
     """
     Flattens the dependencies of a pack recursively.
     Args:
@@ -839,18 +844,19 @@ def flatten_dependencies(pack_id: str, pack_dependencies: list[dict], all_packs_
     Returns:
         list[dict]: A list of the flattened dependencies.
     """
-    dependencies_flatten = []
+    dependencies_flatten = {}  # Using a dict to avoid duplicates.
     for pack_dependency in pack_dependencies:
-        if pack_dependency["id"] != pack_id: # fixme Is there a need to check for duplicates?
-            dependencies_flatten.extend(
-                flatten_dependencies(
-                    pack_dependency["id"],
-                    all_packs_dependencies.get(pack_dependency["id"], []),
-                    all_packs_dependencies,
-                )
+        if pack_dependency["id"] != pack_id:
+            result = flatten_dependencies(
+                pack_dependency["id"],
+                all_packs_dependencies.get(pack_dependency["id"], []),
+                all_packs_dependencies,
             )
-        dependencies_flatten.append(pack_dependency)
-    return dependencies_flatten
+            for dependency in result:
+                dependencies_flatten[dependency["id"]] = dependency
+
+        dependencies_flatten["id"] = pack_dependency
+    return list(dependencies_flatten.values())
 
 
 def search_and_install_packs_and_their_dependencies(
@@ -906,9 +912,8 @@ def search_and_install_packs_and_their_dependencies(
                     )
                     success = False
             except Exception:  # noqa E722
-                logging.error(
-                    f"Failed to search for dependencies of pack '{pack_ids[futures.index(future)]}'" # fixme No need to log the details of the exception that was raised?
-At least make it a different log message than the one just above (line 956)
+                logging.exception(
+                    f"An exception occurred while searching for dependencies of pack '{pack_ids[futures.index(future)]}'"
                 )
                 success = False
 
@@ -921,27 +926,31 @@ At least make it a different log message than the one just above (line 956)
     # Gather all dependencies and install them in batches.
     packs_installed_successfully: set[str] = set()
     packs_to_install = []
+    failed_to_install_packs: set[str] = set()
     for i, (pack_id, pack_dependencies) in enumerate(all_packs_dependencies.items()):
         packs = flatten_dependencies(pack_id, pack_dependencies, all_packs_dependencies)
-        packs_to_install.extend( # fixme If a pack failed to installed, it will not be in packs_installed_successfully, and thus you'll try to install it over and over again?
-Maybe add it to a set called packs_failed_install, and check that as well?
-            [pack for pack in packs if pack["id"] not in packs_installed_successfully]
+        packs_to_install.extend(
+            [pack for pack in packs if pack["id"] not in packs_installed_successfully
+             and pack["id"] not in failed_to_install_packs]
         )
 
         if (
-            len(packs_to_install) >= max_packs_to_install
-            or i == len(all_packs_dependencies) - 1
+            len(packs_to_install) >= max_packs_to_install  # Reached max packs to install
+            or i == len(all_packs_dependencies) - 1  # Last iteration
         ):
             logging.info(f"Installing packs: {packs_to_install}")
             installed_packs = install_packs(client, host, packs_to_install)
-            packs_to_install = []
             if installed_packs is not None:
                 packs_installed_successfully |= {installed_pack["ID"] for installed_pack in installed_packs}
             else:
+                failed_to_install_packs |= {pack["id"] for pack in packs_to_install}
                 success = False
+            packs_to_install = []  # Reset the batch of packs to install.
+
     duration = humanize.naturaldelta(datetime.utcnow() - start_time, minimum_unit='milliseconds')
     if success:
-        logging.info(f"Finished successfully, Installing packs on {host} took {duration} seconds")
+        logging.info(f"Installing packs on {host} took {duration} seconds - Finished successfully")
     else:
-        logging.critical(f"Finished with errors, Installing packs on {host} took {duration} seconds")
+        logging.critical(f"Installing packs on {host} took {duration} seconds - Finished with errors, "
+                         f"failed to install packs:{failed_to_install_packs}")
     return packs_installed_successfully, success
