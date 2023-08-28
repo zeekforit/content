@@ -49,6 +49,9 @@ GITLAB_PACK_METADATA_URL = (
     f"{PACK_METADATA_FILE}"
 )
 
+MALFORMED_PACK_PATTERN = re.compile(
+    r"invalid version [0-9.]+ for pack with ID ([\w_-]+)"
+)
 
 @lru_cache
 def get_env_var(var_name: str) -> str:
@@ -270,7 +273,7 @@ def install_all_content_packs_for_nightly(
                 all_packs.append(
                     get_pack_installation_request_data(pack_id, pack_version)
                 )
-                # FIXME add logging logging.debug(f'Skipping installation of ignored pack "{pack_id}"')
+                logging.debug(f'Skipping installation of ignored pack "{pack_id}"')
     install_packs(client, host, all_packs)
 
 
@@ -370,7 +373,7 @@ def upload_zipped_packs(client: demisto_client, host: str, pack_path: str):
             response_type="object",
         )
 
-        if 200 <= status_code < 300:  # FIXME exclude 204
+        if 200 <= status_code < 300 and status_code != 204:
             logging.info(
                 f"All packs from file {pack_path} were successfully installed on server {host}"
             )
@@ -452,12 +455,9 @@ def find_malformed_pack_id(body: str) -> list:
             else:
                 # the errors are returned as a list of error
                 errors_info = response_info.get("errors", [])
-            malformed_pack_pattern = re.compile( # FIXME move to const
-                r"invalid version [0-9.]+ for pack with ID ([\w_-]+)"
-            )
             for error in errors_info:
                 if "pack id: " in error:
-                    malformed_ids.extend( # FIXME malformed error id
+                    malformed_ids.extend(
                         error.split("pack id: ")[1]
                         .replace("]", "")
                         .replace("[", "")
@@ -465,7 +465,7 @@ def find_malformed_pack_id(body: str) -> list:
                         .split(",")
                     )
                 else:
-                    malformed_pack_id = malformed_pack_pattern.findall(str(error))
+                    malformed_pack_id = MALFORMED_PACK_PATTERN.findall(str(error))
                     if malformed_pack_id and error:
                         malformed_ids.extend(malformed_pack_id)
     return malformed_ids
@@ -492,9 +492,9 @@ def handle_malformed_pack_ids(malformed_pack_ids, packs_to_install):
 
 def install_packs_from_artifacts(
     client: demisto_client, host: str, test_pack_path: str, pack_ids_to_install: list
-): # FIXME typo in the next line BitHub
+):
     """
-    Installs all the packs located in the artifacts folder of the BitHub actions build. Please note:
+    Installs all the packs located in the artifacts folder of the GitHub actions build. Please note:
     The server always returns a 200 status even if the pack was not installed.
 
     :param client: Demisto-py client to connect to the server.
@@ -809,7 +809,7 @@ def get_pack_dependencies(
     return None
 
 
-def search_pack_and_its_dependencies(  # FIXME -> get_pack_and_its_dependencies
+def get_pack_and_its_dependencies(
     client: demisto_client,
     pack_id: str,
     production_bucket: bool,
@@ -880,7 +880,17 @@ def search_pack_and_its_dependencies(  # FIXME -> get_pack_and_its_dependencies
     return pack_id, dependencies
 
 
-def flatten_dependencies(pack_id: str, pack_dependencies: list[dict], all_packs_dependencies: dict[str, list[dict]]):  # FIXME add type hint
+def flatten_dependencies(pack_id: str, pack_dependencies: list[dict], all_packs_dependencies: dict[str, list[dict]]) -> list[dict]:
+    """
+    Flattens the dependencies of a pack recursively.
+    Args:
+        pack_id: pack_id to flatten dependencies for.
+        pack_dependencies: pack_dependencies to flatten.
+        all_packs_dependencies: all_packs_dependencies to use for flattening.
+
+    Returns:
+        list[dict]: A list of the flattened dependencies.
+    """
     dependencies_flatten = []
     for pack_dependency in pack_dependencies:
         if pack_dependency["id"] != pack_id:
@@ -928,7 +938,7 @@ def search_and_install_packs_and_their_dependencies(
     with ThreadPoolExecutor(max_workers=MAX_WORKERS if multithreading else 1) as pool:
         futures = [
             pool.submit(
-                search_pack_and_its_dependencies,
+                get_pack_and_its_dependencies,
                 pack_id=pack_id,
                 client=client,
                 production_bucket=production_bucket,
