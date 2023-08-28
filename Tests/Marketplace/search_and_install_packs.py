@@ -408,9 +408,6 @@ def get_pack_id_from_error_with_gcp_path(error: str) -> str:
     """
     Gets the id of the pack from the pack's path in GCP that is mentioned in the error msg.
 
-    Args:
-        error: path of pack in GCP.
-
     Returns:
         str: The id of given pack.
     """
@@ -517,13 +514,30 @@ def install_packs_from_artifacts(
             upload_zipped_packs(client=client, host=host, pack_path=local_pack)
 
 
-def get_error_ids(body: str) -> set[str]:
+
+def install_packs_private(client: demisto_client,
+                          host: str,
+                          pack_ids_to_install: list,
+                          test_pack_path: str):
+    """ Make a packs installation request.
+
+    Args:
+        client (demisto_client): The configured client to use.
+        host (str): The server URL.
+        pack_ids_to_install (list): List of Pack IDs to install.
+        test_pack_path (str): Path where test packs are located.
+    """
+    install_packs_from_artifacts(client,
+                                 host,
+                                 pack_ids_to_install=pack_ids_to_install,
+                                 test_pack_path=test_pack_path)
+
+
+def get_error_ids(body: str) -> dict[int, str]:
     with contextlib.suppress(json.JSONDecodeError):
         response_info = json.loads(body)
-        return {
-            error["id"] for error in response_info.get("errors", []) if "id" in error
-        }
-    return set()
+        return {error["id"]: error.get("details", "") for error in response_info.get("errors", []) if "id" in error}
+    return {}
 
 
 def install_packs(
@@ -602,29 +616,23 @@ def install_packs(
                         raise Exception(f"malformed packs: {malformed_ids}") from ex
 
                     # We've more attempts, retrying without tho malformed packs.
-                    logging.error(
-                        f"Unable to install malformed packs: {malformed_ids}, retrying without them."
-                    )
-                    packs_to_install = [
-                        pack
-                        for pack in packs_to_install
-                        if pack["id"] not in malformed_ids
-                    ]
+                    SUCCESS_FLAG = False
+                    logging.error(f"Unable to install malformed packs: {malformed_ids}, retrying without them.")
+                    packs_to_install = [pack for pack in packs_to_install if pack['id'] not in malformed_ids]
 
-                if (
-                    error_ids := get_error_ids(ex.body)
-                ) and WLM_TASK_FAILED_ERROR_CODE in error_ids:
-                    # If we got this error code, it means that the modeling rules are not valid, exiting install flow.
-                    raise Exception(
-                        f"Got [{WLM_TASK_FAILED_ERROR_CODE}] error code - Modeling rules and Dataset validations "
-                        f"failed. Please check the GCP logs to understand why it failed."
-                    ) from ex
+                error_ids = get_error_ids(ex.body)
+                if WLM_TASK_FAILED_ERROR_CODE in error_ids:
+                    if "polling request failed for task ID" in error_ids[WLM_TASK_FAILED_ERROR_CODE].lower():
+                        logging.error(f"Got {WLM_TASK_FAILED_ERROR_CODE} error code - polling request failed for task ID, "
+                                      f"retrying.")
+                    else:
+                        # If we got this error code, it means that the modeling rules are not valid, exiting install flow.
+                        raise Exception(f"Got [{WLM_TASK_FAILED_ERROR_CODE}] error code - Modeling rules and Dataset validations "
+                                        f"failed. Please look at GCP logs to understand why it failed.") from ex
 
-                if (
-                    not attempt
-                ):  # exhausted all attempts, understand what happened and exit.
-                    if "timeout awaiting response" in ex.body:
-                        if "/packs/" in ex.body:
+                if not attempt:  # exhausted all attempts, understand what happened and exit.
+                    if 'timeout awaiting response' in ex.body:
+                        if '/packs/' in ex.body:
                             pack_id = get_pack_id_from_error_with_gcp_path(ex.body)
                             raise Exception(
                                 f"timeout awaiting response headers while trying to install pack {pack_id}"
@@ -673,10 +681,45 @@ def create_dependencies_data_structure(
         dependants_ids (list): A list of the dependant packs IDs.
         checked_packs (list): Required dependants that were already found.
     """
-    next_call_dependants_ids: list = []
-    dependencies_data: list = []
-    for dependency in response_data:
-        dependants = dependency.get("dependants", {})
+    global SUCCESS_FLAG
+    if is_pack_deprecated(pack_id=pack_id, production_bucket=production_bucket, commit_hash=commit_hash):
+        logging.warning(f"Pack '{pack_id}' is deprecated (hidden) and will not be installed.")
+        return
+
+    api_data = get_pack_dependencies(client=client, pack_id=pack_id, lock=lock)
+
+    if not api_data:
+        return
+
+    dependencies_data: list[dict] = []
+
+    try:
+        pack_api_data = api_data['packs'][0]
+        current_packs_to_install = [pack_api_data]
+
+        create_dependencies_data_structure(response_data=api_data.get('dependencies', []),
+                                           dependants_ids=[pack_id],
+                                           dependencies_data=dependencies_data,
+                                           checked_packs=[pack_id])
+
+    except Exception as ex:
+        logging.error(f"Error: {ex}\n\nStack trace:\n{traceback.format_exc()}")
+        SUCCESS_FLAG = False
+        return
+
+    if dependencies_data:
+        dependencies_ids = [dependency['id'] for dependency in dependencies_data]
+        logging.debug(f"Found dependencies for '{pack_id}': {dependencies_ids}")
+
+        for dependency in dependencies_data:
+            dependency_id = dependency['id']
+            is_deprecated = is_pack_deprecated(pack_id=dependency_id,
+                                               production_bucket=production_bucket, pack_api_data=dependency)
+
+            if is_deprecated:
+                logging.critical(f"Pack '{pack_id}' depends on pack '{dependency_id}' which is a deprecated pack.")
+                SUCCESS_FLAG = False
+                return
 
         for dependant in dependants:
             if (
