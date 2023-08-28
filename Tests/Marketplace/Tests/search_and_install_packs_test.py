@@ -141,8 +141,8 @@ def test_search_and_install_packs_and_their_dependencies(mocker, use_multithread
 
     client = MockClient()
 
-    mocker.patch.object(script, 'install_packs', return_value=
-        [{"ID": item} for item in ['HelloWorld', 'AzureSentinel', 'TestPack']])
+    mocker.patch.object(script, 'install_packs', return_value=[{"ID": item}
+                        for item in ['HelloWorld', 'AzureSentinel', 'TestPack']])
     mocker.patch.object(demisto_client, 'generic_request_func', side_effect=mocked_generic_request_func)
     mocker.patch.object(script, 'is_pack_deprecated', return_value=False)  # Relevant only for post-update unit-tests
 

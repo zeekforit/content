@@ -53,6 +53,7 @@ MALFORMED_PACK_PATTERN = re.compile(
     r"invalid version [0-9.]+ for pack with ID ([\w_-]+)"
 )
 
+
 @lru_cache
 def get_env_var(var_name: str) -> str:
     """
@@ -514,25 +515,6 @@ def install_packs_from_artifacts(
             upload_zipped_packs(client=client, host=host, pack_path=local_pack)
 
 
-
-def install_packs_private(client: demisto_client,
-                          host: str,
-                          pack_ids_to_install: list,
-                          test_pack_path: str):
-    """ Make a packs installation request.
-
-    Args:
-        client (demisto_client): The configured client to use.
-        host (str): The server URL.
-        pack_ids_to_install (list): List of Pack IDs to install.
-        test_pack_path (str): Path where test packs are located.
-    """
-    install_packs_from_artifacts(client,
-                                 host,
-                                 pack_ids_to_install=pack_ids_to_install,
-                                 test_pack_path=test_pack_path)
-
-
 def get_error_ids(body: str) -> dict[int, str]:
     with contextlib.suppress(json.JSONDecodeError):
         response_info = json.loads(body)
@@ -616,7 +598,6 @@ def install_packs(
                         raise Exception(f"malformed packs: {malformed_ids}") from ex
 
                     # We've more attempts, retrying without tho malformed packs.
-                    SUCCESS_FLAG = False
                     logging.error(f"Unable to install malformed packs: {malformed_ids}, retrying without them.")
                     packs_to_install = [pack for pack in packs_to_install if pack['id'] not in malformed_ids]
 
@@ -681,45 +662,10 @@ def create_dependencies_data_structure(
         dependants_ids (list): A list of the dependant packs IDs.
         checked_packs (list): Required dependants that were already found.
     """
-    global SUCCESS_FLAG
-    if is_pack_deprecated(pack_id=pack_id, production_bucket=production_bucket, commit_hash=commit_hash):
-        logging.warning(f"Pack '{pack_id}' is deprecated (hidden) and will not be installed.")
-        return
-
-    api_data = get_pack_dependencies(client=client, pack_id=pack_id, lock=lock)
-
-    if not api_data:
-        return
-
-    dependencies_data: list[dict] = []
-
-    try:
-        pack_api_data = api_data['packs'][0]
-        current_packs_to_install = [pack_api_data]
-
-        create_dependencies_data_structure(response_data=api_data.get('dependencies', []),
-                                           dependants_ids=[pack_id],
-                                           dependencies_data=dependencies_data,
-                                           checked_packs=[pack_id])
-
-    except Exception as ex:
-        logging.error(f"Error: {ex}\n\nStack trace:\n{traceback.format_exc()}")
-        SUCCESS_FLAG = False
-        return
-
-    if dependencies_data:
-        dependencies_ids = [dependency['id'] for dependency in dependencies_data]
-        logging.debug(f"Found dependencies for '{pack_id}': {dependencies_ids}")
-
-        for dependency in dependencies_data:
-            dependency_id = dependency['id']
-            is_deprecated = is_pack_deprecated(pack_id=dependency_id,
-                                               production_bucket=production_bucket, pack_api_data=dependency)
-
-            if is_deprecated:
-                logging.critical(f"Pack '{pack_id}' depends on pack '{dependency_id}' which is a deprecated pack.")
-                SUCCESS_FLAG = False
-                return
+    next_call_dependants_ids: list = []
+    dependencies_data: list = []
+    for dependency in response_data:
+        dependants = dependency.get("dependants", {})
 
         for dependant in dependants:
             if (
@@ -993,14 +939,9 @@ Maybe add it to a set called packs_failed_install, and check that as well?
                 packs_installed_successfully |= {installed_pack["ID"] for installed_pack in installed_packs}
             else:
                 success = False
+    duration = humanize.naturaldelta(datetime.utcnow() - start_time, minimum_unit='milliseconds')
     if success:
-        logging.info(
-            f"Finished successfully, Installing packs on {host} took "
-            f"{humanize.naturaldelta(datetime.utcnow() - start_time, minimum_unit='milliseconds')} seconds"
-        )
+        logging.info(f"Finished successfully, Installing packs on {host} took {duration} seconds")
     else:
-        logging.critical(
-            f"Finished with errors, Installing packs on {host} took "
-            f"{humanize.naturaldelta(datetime.utcnow() - start_time, minimum_unit='milliseconds')} seconds"
-        )
+        logging.critical(f"Finished with errors, Installing packs on {host} took {duration} seconds")
     return packs_installed_successfully, success
