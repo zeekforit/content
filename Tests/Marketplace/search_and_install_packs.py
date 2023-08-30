@@ -11,6 +11,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
 import demisto_client
 import humanize  # noqa
@@ -405,7 +406,7 @@ def search_and_install_packs_and_their_dependencies_private(
 
     logging.info(f"Starting to search and install packs in server: {host}")
 
-    install_packs_private(client, host, pack_ids, test_pack_path)
+    return install_packs_private(client, host, pack_ids, test_pack_path)
 
 
 def get_pack_id_from_error_with_gcp_path(error: str) -> str:
@@ -420,7 +421,7 @@ def get_pack_id_from_error_with_gcp_path(error: str) -> str:
 
 def install_packs_private(
     client: demisto_client, host: str, pack_ids_to_install: list, test_pack_path: str
-):
+) -> bool:
     """Make a packs installation request.
 
     Args:
@@ -428,8 +429,10 @@ def install_packs_private(
         host (str): The server URL.
         pack_ids_to_install (list): List of Pack IDs to install.
         test_pack_path (str): Path where test packs are located.
+    Returns:
+        bool: True if the packs were installed successfully, False otherwise.
     """
-    install_packs_from_artifacts(
+    return install_packs_from_artifacts(
         client,
         host,
         pack_ids_to_install=pack_ids_to_install,
@@ -493,7 +496,7 @@ def handle_malformed_pack_ids(malformed_pack_ids, packs_to_install):
 
 def install_packs_from_artifacts(
     client: demisto_client, host: str, test_pack_path: str, pack_ids_to_install: list
-):
+) -> bool:
     """
     Installs all the packs located in the artifacts folder of the GitHub actions build. Please note:
     The server always returns a 200 status even if the pack was not installed.
@@ -502,7 +505,7 @@ def install_packs_from_artifacts(
     :param host: FQDN of the server.
     :param test_pack_path: Path to the test pack directory.
     :param pack_ids_to_install: List of pack IDs to install.
-    :return: None. Call to server waits until a successful response.
+    :return: book. Call to server waits until a successful response.
     """
     logging.info(f"Test pack path is: {test_pack_path}")
     logging.info(f"Pack IDs to install are: {pack_ids_to_install}")
@@ -513,6 +516,7 @@ def install_packs_from_artifacts(
         if any(pack_id in local_pack for pack_id in pack_ids_to_install):
             logging.info(f"Installing the following pack: {local_pack}")
             upload_zipped_packs(client=client, host=host, pack_path=local_pack)
+    return True
 
 
 def get_error_ids(body: str) -> dict[int, str]:
@@ -925,27 +929,29 @@ def search_and_install_packs_and_their_dependencies(
     logging.info(f"Starting to install packs on {host}")
     # Gather all dependencies and install them in batches.
     packs_installed_successfully: set[str] = set()
-    packs_to_install = []
+    packs_to_install: dict[str, Any] = {}
     failed_to_install_packs: set[str] = set()
     for i, (pack_id, pack_dependencies) in enumerate(all_packs_dependencies.items()):
         packs = flatten_dependencies(pack_id, pack_dependencies, all_packs_dependencies)
-        packs_to_install.extend(
-            [pack for pack in packs if pack["id"] not in packs_installed_successfully
-             and pack["id"] not in failed_to_install_packs]
-        )
+
+        packs_to_install |= {
+            pack["id"]: pack
+            for pack in packs
+            if pack["id"] not in packs_installed_successfully and pack["id"] not in failed_to_install_packs
+        }
 
         if (
             len(packs_to_install) >= max_packs_to_install  # Reached max packs to install
             or i == len(all_packs_dependencies) - 1  # Last iteration
         ):
-            logging.info(f"Installing packs: {packs_to_install}")
-            installed_packs = install_packs(client, host, packs_to_install)
+            logging.info(f"Installing packs: {packs_to_install.keys()}")
+            installed_packs = install_packs(client, host, list(packs_to_install.values()))
             if installed_packs is not None:
                 packs_installed_successfully |= {installed_pack["ID"] for installed_pack in installed_packs}
             else:
-                failed_to_install_packs |= {pack["id"] for pack in packs_to_install}
+                failed_to_install_packs |= set(packs_to_install.keys())
                 success = False
-            packs_to_install = []  # Reset the batch of packs to install.
+            packs_to_install = {}  # Reset the batch of packs to install.
 
     duration = humanize.naturaldelta(datetime.utcnow() - start_time, minimum_unit='milliseconds')
     if success:
