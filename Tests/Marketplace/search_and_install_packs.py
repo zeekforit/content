@@ -25,10 +25,8 @@ from Tests.Marketplace.marketplace_constants import (
     PACKS_FOLDER,
     PACKS_FULL_PATH,
     GCPConfig,
-    Metadata,
 )
-from Tests.Marketplace.marketplace_services import Pack, init_storage_client, load_json
-from Tests.Marketplace.upload_packs import download_and_extract_index
+from Tests.Marketplace.marketplace_services import Pack, init_storage_client
 from Tests.scripts.utils import logging_wrapper as logging
 
 PACK_PATH_VERSION_REGEX = re.compile(
@@ -276,71 +274,71 @@ def install_all_content_packs_for_nightly(
     install_packs(client, host, all_packs)
 
 
-def install_all_content_packs_from_build_bucket(
-    client: demisto_client,
-    host: str,
-    server_version: str,
-    bucket_packs_root_path: str,
-    service_account: str,
-    extract_destination_path: str,
-):
-    """Iterates over the packs currently located in the Build bucket. Wrapper for install_packs.
-    Retrieving the metadata of the latest version of each pack from the index.zip of the build bucket.
-
-    :param client: Demisto-py client to connect to the server.
-    :param host: FQDN of the server.
-    :param server_version: The version of the server the packs are installed on.
-    :param bucket_packs_root_path: The prefix to the root of packs in the bucket
-    :param service_account: Google Service Account
-    :param extract_destination_path: the full path of extract folder for the index.
-    :return: None. Prints the response from the server in the log.
-    """
-    all_packs = []
-    logging.debug(
-        f"Installing all content packs in server {host} from packs path {bucket_packs_root_path}"
-    )
-
-    storage_client = init_storage_client(service_account)
-    build_bucket = storage_client.bucket(GCPConfig.CI_BUILD_BUCKET)
-    index_folder_path, _, _ = download_and_extract_index(
-        build_bucket, extract_destination_path, bucket_packs_root_path
-    )
-
-    for pack_id in os.listdir(index_folder_path):
-        if Path(os.path.join(index_folder_path, pack_id)).is_dir():
-            metadata_path = os.path.join(index_folder_path, pack_id, Pack.METADATA)
-            pack_metadata = load_json(metadata_path)
-            if "partnerId" in pack_metadata:  # not installing private packs
-                logging.debug(f'Skipping installation of partner pack "{pack_id}"')
-                continue
-            pack_version = pack_metadata.get(
-                Metadata.CURRENT_VERSION, Metadata.SERVER_DEFAULT_MIN_VERSION
-            )
-            server_min_version = pack_metadata.get(
-                Metadata.SERVER_MIN_VERSION, Metadata.SERVER_DEFAULT_MIN_VERSION
-            )
-            hidden = pack_metadata.get(Metadata.HIDDEN, False)
-            # Check if the server version is greater than the minimum server version required for this pack or if the
-            # pack is hidden (deprecated):
-            if (
-                "master" in server_version.lower()
-                or Version(server_version) >= Version(server_min_version)
-            ) and not hidden:
-                logging.debug(f"Appending pack id {pack_id} to the list of packs to install")
-                all_packs.append(
-                    get_pack_installation_request_data(pack_id, pack_version)
-                )
-            else:
-                reason = (
-                    "Is hidden"
-                    if hidden
-                    else f"min server version is {server_min_version} and server version is {server_version}"
-                )
-                logging.debug(
-                    f"Pack: {pack_id} with version: {pack_version} will not be installed on {host}. "
-                    f"Pack {reason}."
-                )
-    return install_packs(client, host, all_packs)
+# def install_all_content_packs_from_build_bucket(
+#     client: demisto_client,
+#     host: str,
+#     server_version: str,
+#     bucket_packs_root_path: str,
+#     service_account: str,
+#     extract_destination_path: str,
+# ):
+#     """Iterates over the packs currently located in the Build bucket. Wrapper for install_packs.
+#     Retrieving the metadata of the latest version of each pack from the index.zip of the build bucket.
+#
+#     :param client: Demisto-py client to connect to the server.
+#     :param host: FQDN of the server.
+#     :param server_version: The version of the server the packs are installed on.
+#     :param bucket_packs_root_path: The prefix to the root of packs in the bucket
+#     :param service_account: Google Service Account
+#     :param extract_destination_path: the full path of extract folder for the index.
+#     :return: None. Prints the response from the server in the log.
+#     """
+#     all_packs = []
+#     logging.debug(
+#         f"Installing all content packs in server {host} from packs path {bucket_packs_root_path}"
+#     )
+#
+#     storage_client = init_storage_client(service_account)
+#     build_bucket = storage_client.bucket(GCPConfig.CI_BUILD_BUCKET)
+#     index_folder_path, _, _ = download_and_extract_index(
+#         build_bucket, extract_destination_path, bucket_packs_root_path
+#     )
+#
+#     for pack_id in os.listdir(index_folder_path):
+#         if Path(os.path.join(index_folder_path, pack_id)).is_dir():
+#             metadata_path = os.path.join(index_folder_path, pack_id, Pack.METADATA)
+#             pack_metadata = load_json(metadata_path)
+#             if "partnerId" in pack_metadata:  # not installing private packs
+#                 logging.debug(f'Skipping installation of partner pack "{pack_id}"')
+#                 continue
+#             pack_version = pack_metadata.get(
+#                 Metadata.CURRENT_VERSION, Metadata.SERVER_DEFAULT_MIN_VERSION
+#             )
+#             server_min_version = pack_metadata.get(
+#                 Metadata.SERVER_MIN_VERSION, Metadata.SERVER_DEFAULT_MIN_VERSION
+#             )
+#             hidden = pack_metadata.get(Metadata.HIDDEN, False)
+#             # Check if the server version is greater than the minimum server version required for this pack or if the
+#             # pack is hidden (deprecated):
+#             if (
+#                 "master" in server_version.lower()
+#                 or Version(server_version) >= Version(server_min_version)
+#             ) and not hidden:
+#                 logging.debug(f"Appending pack id {pack_id} to the list of packs to install")
+#                 all_packs.append(
+#                     get_pack_installation_request_data(pack_id, pack_version)
+#                 )
+#             else:
+#                 reason = (
+#                     "Is hidden"
+#                     if hidden
+#                     else f"min server version is {server_min_version} and server version is {server_version}"
+#                 )
+#                 logging.debug(
+#                     f"Pack: {pack_id} with version: {pack_version} will not be installed on {host}. "
+#                     f"Pack {reason}."
+#                 )
+#     return install_packs(client, host, all_packs)
 
 
 def upload_zipped_packs(client: demisto_client, host: str, pack_path: str):
@@ -530,7 +528,7 @@ def install_packs(
     request_timeout: int = 3600,
     attempts_count: int = 5,
     sleep_interval: int = 60,
-) -> list[dict] | None:
+) -> tuple[bool, list[dict]]:
     """Make a packs installation request.
        If a pack fails to install due to malformed pack, this function catches the corrupted pack and call another
        request to install packs again, this time without the corrupted pack.
@@ -544,7 +542,10 @@ def install_packs(
         request_timeout (int): Timeout setting, in seconds, for the installation request.
         attempts_count (int): The number of attempts to install the packs.
         sleep_interval (int): The sleep interval, in seconds, between install attempts.
+    Returns:
+        tuple[bool, list[dict]]: Success status and a list of the installed packs' data.
     """
+
     def success_handler(response):
         nonlocal packs_to_install
         packs_data = [
@@ -560,7 +561,7 @@ def install_packs(
         logging.debug(
             f"The packs that were successfully installed on server {host}:\n{packs_data=}"
         )
-        return packs_data
+        return True, packs_data
 
     def api_exception_handler(ex, attempts_left):
         nonlocal packs_to_install
@@ -613,7 +614,7 @@ def install_packs(
         logging.info(
             "There are no packs to install on server. Consolidating installation as success"
         )
-        return []
+        return True, []
 
     packs_list = ','.join([p['id'] for p in packs_to_install])
     failure_massage = f'Failed to install packs: {packs_list}'
@@ -866,9 +867,8 @@ def search_and_install_packs_and_their_dependencies(
                 pack_id, deprecated, dependencies_for_packs = future.result()
                 if deprecated:
                     logging.error(
-                        f"Failed to search for dependencies of pack '{pack_id}'"
+                        f"Pack '{pack_id}' is deprecated (hidden) and will not be installed."
                     )
-                    success = False
                 else:
                     all_packs_dependencies[pack_id] = dependencies_for_packs
             except Exception:  # noqa E722
@@ -901,8 +901,8 @@ def search_and_install_packs_and_their_dependencies(
             or i == len(all_packs_dependencies) - 1  # Last iteration
         ):
             logging.info(f"Installing packs: {','.join(packs_to_install.keys())}")
-            installed_packs = install_packs(client, host, list(packs_to_install.values()))
-            if installed_packs is not None:
+            success, installed_packs = install_packs(client, host, list(packs_to_install.values()))
+            if success:
                 packs_installed_successfully |= {installed_pack["ID"] for installed_pack in installed_packs}
             else:
                 failed_to_install_packs |= set(packs_to_install.keys())
