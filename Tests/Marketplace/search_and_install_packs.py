@@ -5,8 +5,6 @@ import json
 import os
 import re
 import sys
-import time
-import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from functools import lru_cache
@@ -15,14 +13,13 @@ from typing import Any
 
 import demisto_client
 import humanize  # noqa
-from demisto_client.demisto_api.rest import ApiException
 from demisto_sdk.commands.common import tools
 from demisto_sdk.commands.content_graph.common import PACK_METADATA_FILENAME
 from google.cloud.storage import Bucket  # noqa type: ignore
 from packaging.version import Version
 from requests import Session
-from urllib3.exceptions import HTTPWarning, HTTPError
 
+from Tests.Marketplace.common import ALREADY_IN_PROGRESS, generic_request_with_retries, wait_until_not_updating
 from Tests.Marketplace.marketplace_constants import (
     IGNORED_FILES,
     PACKS_FOLDER,
@@ -548,111 +545,92 @@ def install_packs(
         attempts_count (int): The number of attempts to install the packs.
         sleep_interval (int): The sleep interval, in seconds, between install attempts.
     """
+    def success_handler(response):
+        nonlocal packs_to_install
+        packs_data = [
+            {
+                "ID": pack.get("id"),
+                "CurrentVersion": pack.get("currentVersion"),
+            }
+            for pack in response
+        ]
+        logging.success(
+            f"Packs were successfully installed on server {host} {packs_to_install}"
+        )
+        logging.debug(
+            f"The packs that were successfully installed on server {host}:\n{packs_data=}"
+        )
+        return packs_data
+
+    def api_exception_handler(ex, attempts_left):
+        nonlocal packs_to_install
+        if ALREADY_IN_PROGRESS in ex.body:
+            wait_succeeded = wait_until_not_updating(client)
+            if not wait_succeeded:
+                raise Exception(
+                    "Failed to wait for the server to exit installation/updating status"
+                ) from ex
+            return
+
+        if malformed_ids := find_malformed_pack_id(ex.body):
+            handle_malformed_pack_ids(malformed_ids, packs_to_install)
+            if not attempts_left:
+                raise Exception(f"malformed packs: {malformed_ids}") from ex
+
+            # We've more attempts, retrying without tho malformed packs.
+            logging.error(f"Unable to install malformed packs: {malformed_ids}, retrying without them.")
+            packs_to_install = [pack for pack in packs_to_install if pack['id'] not in malformed_ids]
+
+        error_ids = get_error_ids(ex.body)
+        if WLM_TASK_FAILED_ERROR_CODE in error_ids:
+            if "polling request failed for task ID" in error_ids[WLM_TASK_FAILED_ERROR_CODE].lower():
+                logging.error(f"Got {WLM_TASK_FAILED_ERROR_CODE} error code - polling request failed for task ID, "
+                              f"retrying.")
+            else:
+                # If we got this error code, it means that the modeling rules are not valid, exiting install flow.
+                raise Exception(f"Got [{WLM_TASK_FAILED_ERROR_CODE}] error code - Modeling rules and Dataset validations "
+                                f"failed. Please look at GCP logs to understand why it failed.") from ex
+
+        if not attempts_left:  # exhausted all attempts, understand what happened and exit.
+            if 'timeout awaiting response' in ex.body:
+                if '/packs/' in ex.body:
+                    pack_id = get_pack_id_from_error_with_gcp_path(ex.body)
+                    raise Exception(
+                        f"timeout awaiting response headers while trying to install pack {pack_id}"
+                    ) from ex
+
+                raise Exception(
+                    "timeout awaiting response headers while trying to install, "
+                    "couldn't determine pack id."
+                ) from ex
+
+            if "item not found" in ex.body.lower():
+                raise Exception(
+                    f"Item not found error, headers:{ex.headers}."
+                ) from ex
+
     if not packs_to_install:
         logging.info(
             "There are no packs to install on server. Consolidating installation as success"
         )
         return []
-    try:
-        for attempt in range(attempts_count - 1, -1, -1):
-            try:
-                logging.info(
-                    f"Installing packs {', '.join([p['id'] for p in packs_to_install])} on server {host}. "
-                    f"Attempt: {attempts_count - attempt}/{attempts_count}"
-                )
-                response, status_code, headers = demisto_client.generic_request_func(
-                    client,
-                    path="/contentpacks/marketplace/install",
-                    method="POST",
-                    body={"packs": packs_to_install, "ignoreWarnings": True},
-                    accept="application/json",
-                    _request_timeout=request_timeout,
-                    response_type="object",
-                )
 
-                if 200 <= status_code < 300 and status_code != 204:
-                    packs_data = [
-                        {
-                            "ID": pack.get("id"),
-                            "CurrentVersion": pack.get("currentVersion"),
-                        }
-                        for pack in response
-                    ]
-                    logging.success(
-                        f"Packs were successfully installed on server {host}"
-                    )
-                    logging.debug(
-                        f"The packs that were successfully installed on server {host}:\n{packs_data=}"
-                    )
-                    return packs_data
+    packs_list = ','.join([p['id'] for p in packs_to_install])
+    failure_massage = f'Failed to install packs: {packs_list}'
 
-                if not attempt:
-                    raise Exception(
-                        f"Got bad status code: {status_code}, headers: {headers}"
-                    )
-
-                logging.warning(
-                    f"Got bad status code: {status_code} from the server, headers:{headers}"
-                )
-
-            except ApiException as ex:
-                if malformed_ids := find_malformed_pack_id(ex.body):
-                    handle_malformed_pack_ids(malformed_ids, packs_to_install)
-                    if not attempt:
-                        raise Exception(f"malformed packs: {malformed_ids}") from ex
-
-                    # We've more attempts, retrying without tho malformed packs.
-                    logging.error(f"Unable to install malformed packs: {malformed_ids}, retrying without them.")
-                    packs_to_install = [pack for pack in packs_to_install if pack['id'] not in malformed_ids]
-
-                error_ids = get_error_ids(ex.body)
-                if WLM_TASK_FAILED_ERROR_CODE in error_ids:
-                    if "polling request failed for task ID" in error_ids[WLM_TASK_FAILED_ERROR_CODE].lower():
-                        logging.error(f"Got {WLM_TASK_FAILED_ERROR_CODE} error code - polling request failed for task ID, "
-                                      f"retrying.")
-                    else:
-                        # If we got this error code, it means that the modeling rules are not valid, exiting install flow.
-                        raise Exception(f"Got [{WLM_TASK_FAILED_ERROR_CODE}] error code - Modeling rules and Dataset validations "
-                                        f"failed. Please look at GCP logs to understand why it failed.") from ex
-
-                if not attempt:  # exhausted all attempts, understand what happened and exit.
-                    if 'timeout awaiting response' in ex.body:
-                        if '/packs/' in ex.body:
-                            pack_id = get_pack_id_from_error_with_gcp_path(ex.body)
-                            raise Exception(
-                                f"timeout awaiting response headers while trying to install pack {pack_id}"
-                            ) from ex
-
-                        raise Exception(
-                            "timeout awaiting response headers while trying to install, "
-                            "couldn't determine pack id."
-                        ) from ex
-
-                    if "item not found" in ex.body.lower():
-                        raise Exception(
-                            f"Item not found error, headers:{ex.headers}."
-                        ) from ex
-
-                    # Unknown exception reason, re-raise.
-                    raise Exception(
-                        f"Got {ex.status} from server, message:{ex.body}, headers:{ex.headers}"
-                    ) from ex
-            except (HTTPError, HTTPWarning) as http_ex:
-                if not attempt:
-                    raise Exception(
-                        "Failed to perform http request to the server"
-                    ) from http_ex
-
-            # There are more attempts available, sleep and retry.
-            logging.debug(
-                f"Failed to install packs: {packs_to_install}. Sleeping for {sleep_interval} seconds."
-            )
-            time.sleep(sleep_interval)
-    except Exception as e:
-        logging.exception(
-            f"The request to install packs: {packs_to_install} has failed. Additional info: {str(e)}"
-        )
-    return None
+    return generic_request_with_retries(client=client,
+                                        retries_message=failure_massage,
+                                        exception_message=failure_massage,
+                                        prior_message=f"Installing packs {packs_list} on server {host}. ",
+                                        path="/contentpacks/marketplace/install",
+                                        body={"packs": packs_to_install, "ignoreWarnings": True},
+                                        method="POST",
+                                        response_type="object",
+                                        attempts_count=attempts_count,
+                                        sleep_interval=sleep_interval,
+                                        request_timeout=request_timeout,
+                                        success_handler=success_handler,
+                                        api_exception_handler=api_exception_handler)
 
 
 def create_dependencies_data_structure(
@@ -695,6 +673,7 @@ def get_pack_dependencies(
     pack_id: str,
     attempts_count: int = 5,
     sleep_interval: int = 60,
+    request_timeout: int = 300,
 ) -> dict | None:
     """
     Get pack's required dependencies.
@@ -704,59 +683,34 @@ def get_pack_dependencies(
         pack_id (str): ID of the pack to get dependencies for.
         attempts_count (int): The number of attempts to install the packs.
         sleep_interval (int): The sleep interval, in seconds, between request retry attempts.
+        request_timeout (int): Timeout setting, in seconds, for the installation request.
 
     Returns:
         dict | None: API response data for the /search/dependencies endpoint. None if the request failed.
     """
 
-    for attempt in range(attempts_count - 1, -1, -1):
+    def success_handler(response):
         logging.debug(
-            f"Fetching dependencies information for '{pack_id}' using Marketplace API "
-            f"(Attempt {attempts_count - attempt}/{attempts_count})"
+            f"Successfully fetched dependencies for pack '{pack_id}'.\nResponse: '{json.dumps(response)}'"
         )
-        try:
-            response, _, _ = demisto_client.generic_request_func(
-                client,
-                path="/contentpacks/marketplace/search/dependencies",
-                method="POST",
-                body=[
-                    {"id": pack_id}
-                ],  # Not specifying a "version" key will return the latest version of the pack.
-                accept="application/json",
-                _request_timeout=None,
-                response_type="object",
-            )
+        return response
 
-            logging.debug(
-                f"Successfully fetched dependencies for pack '{pack_id}'.\nResponse: '{json.dumps(response)}'"
-            )
-            return response
-
-        except Exception as ex:
-            if isinstance(ex, ApiException):
-                logging.warning(
-                    f"API request to fetch dependencies of pack '{pack_id}' has failed.\n"
-                    f"Response code '{ex.status}'\nResponse: '{ex.body}'\nResponse Headers: '{ex.headers}'"
-                )
-
-            elif isinstance(ex, HTTPError | HTTPWarning):
-                logging.warning(f"Failed to perform HTTP request : {ex}")
-
-            else:
-                logging.warning(
-                    f"API call to fetch dependencies of '{pack_id}' has failed.\nError: {ex}."
-                )
-                logging.debug(f"Stack trace:\n{traceback.format_exc()}")
-
-            if attempt:  # There are remaining retry attempts
-                logging.debug(f"Sleeping for {sleep_interval} seconds and retrying...")
-                time.sleep(sleep_interval)
-
-            else:  # No retry attempts remaining
-                logging.error(f"All {attempts_count} attempts to get pack {pack_id} dependencies have failed.")
-                break
-
-    return None
+    failure_massage = f'Failed to search dependencies for pack: {pack_id}'
+    prior_message = f"Searching dependencies information for '{pack_id}' using Marketplace API"
+    return generic_request_with_retries(client=client,
+                                        retries_message=failure_massage,
+                                        exception_message=failure_massage,
+                                        prior_message=prior_message,
+                                        path="/contentpacks/marketplace/search/dependencies",
+                                        method='POST',
+                                        body=[
+                                            {"id": pack_id}
+                                        ],  # Not specifying a "version" key will return the latest version of the pack.
+                                        response_type="object",
+                                        attempts_count=attempts_count,
+                                        sleep_interval=sleep_interval,
+                                        success_handler=success_handler,
+                                        request_timeout=request_timeout)
 
 
 def get_pack_and_its_dependencies(
@@ -859,7 +813,7 @@ def flatten_dependencies(pack_id: str,
             for dependency in result:
                 dependencies_flatten[dependency["id"]] = dependency
 
-        dependencies_flatten["id"] = pack_dependency
+        dependencies_flatten[pack_dependency["id"]] = pack_dependency
     return list(dependencies_flatten.values())
 
 
@@ -944,7 +898,7 @@ def search_and_install_packs_and_their_dependencies(
             len(packs_to_install) >= max_packs_to_install  # Reached max packs to install
             or i == len(all_packs_dependencies) - 1  # Last iteration
         ):
-            logging.info(f"Installing packs: {packs_to_install.keys()}")
+            logging.info(f"Installing packs: {','.join(packs_to_install.keys())}")
             installed_packs = install_packs(client, host, list(packs_to_install.values()))
             if installed_packs is not None:
                 packs_installed_successfully |= {installed_pack["ID"] for installed_pack in installed_packs}
