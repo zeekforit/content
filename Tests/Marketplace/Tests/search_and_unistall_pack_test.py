@@ -1,10 +1,11 @@
+
 import demisto_client
 import pytest
+from demisto_client.demisto_api.rest import ApiException
+from urllib3.exceptions import HTTPError
 
 import Tests.Marketplace.common
 import Tests.Marketplace.search_and_uninstall_pack as script
-from demisto_client.demisto_api.rest import ApiException
-from urllib3.exceptions import HTTPError
 
 BASE_URL = 'http://123-fake-api.com'
 API_KEY = 'test-api-key'
@@ -36,7 +37,8 @@ MOCK_PACKS_INSTALLATED_RESULT = """[
 MOCK_PACKS_ID_TO_UNINSTALL = ['HelloWorld', 'TestPack', 'Base']
 
 
-def mocked_generic_request_func(self, path: str, method, body=None, accept=None, _request_timeout=None):
+def mocked_generic_request_func(self, path, method, body=None, **kwargs):
+
     if path == '/contentpacks/marketplace/Base':
         return MOCK_BASE_SEARCH_RESULTS, 200, None
     elif path == '/contentpacks/metadata/installed':

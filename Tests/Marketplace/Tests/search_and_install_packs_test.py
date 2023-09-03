@@ -1,15 +1,15 @@
 import json
 from pathlib import Path
 
-import requests
-
 import demisto_client
 import pytest
+import requests
 import timeout_decorator
-import Tests.Marketplace.search_and_install_packs as script
 from demisto_client.demisto_api.rest import ApiException
-from Tests.Marketplace.marketplace_constants import GCPConfig
 from google.cloud.storage import Blob  # type: ignore
+
+import Tests.Marketplace.search_and_install_packs as script
+from Tests.Marketplace.marketplace_constants import GCPConfig
 
 
 def load_json_file(directory: str, file_name: str):
@@ -82,7 +82,7 @@ MOCK_PACKS_INSTALLATION_RESULT = [
 PACKS_PACK_META_FILE_NAME = 'pack_metadata.json'
 
 
-def mocked_generic_request_func(self, path: str, method, body=None, accept=None, _request_timeout=None, response_type='object'):
+def mocked_generic_request_func(self, path, method, body=None, **kwargs):
     if body:
         if body[0].get('id') == 'HelloWorld':
             return MOCK_HELLOWORLD_SEARCH_RESULTS, 200, None

@@ -718,7 +718,7 @@ def get_pack_and_its_dependencies(
     pack_id: str,
     production_bucket: bool,
     commit_hash: str,
-) -> tuple[str, list[dict] | None]:
+) -> tuple[str, bool, list[dict]]:
     """
     Update 'packs_to_install' (a pointer to a list that's reused and updated by the function on every iteration)
     with 'pack_id' and its dependencies, if 'pack_id' is not deprecated.
@@ -734,6 +734,8 @@ def get_pack_and_its_dependencies(
         production_bucket (bool): Whether pack deprecation status  is determined using production bucket.
         commit_hash (str): Commit hash to use for checking pack's deprecations status if GitLab's API is used.
             If 'pack_api_data' is not provided, will be used for fetching 'pack_metadata.json' file from GitLab.
+    Returns:
+        tuple[str, bool, list[dict]]: A tuple of the pack id, whether it's deprecated, and its dependencies.
     """
     if is_pack_deprecated(
         pack_id=pack_id, production_bucket=production_bucket, commit_hash=commit_hash
@@ -741,12 +743,12 @@ def get_pack_and_its_dependencies(
         logging.warning(
             f"Pack '{pack_id}' is deprecated (hidden) and will not be installed."
         )
-        return pack_id, None  # Don't install deprecated packs
+        return pack_id, True, []  # Don't install deprecated packs
 
     api_data = get_pack_dependencies(client=client, pack_id=pack_id)
 
-    if not api_data:
-        return pack_id, []
+    if not api_data:  # No dependencies were found for the pack.
+        return pack_id, False, []
 
     dependencies_data: list[dict] = create_dependencies_data_structure(
         response_data=api_data.get("dependencies", []),
@@ -776,7 +778,7 @@ def get_pack_and_its_dependencies(
                 f"Pack '{pack_id}' has the following deprecated dependencies: {deprecated_dependencies}. "
                 f"Will not install pack."
             )
-            return pack_id, None
+            return pack_id, True, []
 
     dependencies = [
         get_pack_installation_request_data(
@@ -785,7 +787,7 @@ def get_pack_and_its_dependencies(
         )
         for pack in current_packs_to_install
     ]
-    return pack_id, dependencies
+    return pack_id, False, dependencies
 
 
 def flatten_dependencies(pack_id: str,
@@ -861,14 +863,14 @@ def search_and_install_packs_and_their_dependencies(
 
         for future in as_completed(futures):
             try:
-                pack_id, dependencies_for_packs = future.result()
-                if dependencies_for_packs is not None:
-                    all_packs_dependencies[pack_id] = dependencies_for_packs
-                else:
+                pack_id, deprecated, dependencies_for_packs = future.result()
+                if deprecated:
                     logging.error(
                         f"Failed to search for dependencies of pack '{pack_id}'"
                     )
                     success = False
+                else:
+                    all_packs_dependencies[pack_id] = dependencies_for_packs
             except Exception:  # noqa E722
                 logging.exception(
                     f"An exception occurred while searching for dependencies of pack '{pack_ids[futures.index(future)]}'"
