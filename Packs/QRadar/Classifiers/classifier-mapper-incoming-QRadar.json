@@ -8,7 +8,7 @@
 	"mapping": {
 		"Access": {
 			"internalMapping": {
-				"Dest NT Domain": {
+				"Dest NT DomainThisIsAVeryNiceTest": {
 					"simple": "",
 					"complex": {
 						"root": "destination_networks",
