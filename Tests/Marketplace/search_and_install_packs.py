@@ -793,11 +793,13 @@ def get_pack_and_its_dependencies(
 
 def flatten_dependencies(pack_id: str,
                          pack_dependencies: list[dict],
-                         all_packs_dependencies: dict[str, list[dict]]
+                         all_packs_dependencies: dict[str, list[dict]],
+                         recursion_packs_list: set[str] = None
                          ) -> list[dict]:
     """
     Flattens the dependencies of a pack recursively.
     Args:
+        recursion_packs_list: A list of the packs that were already flattened.
         pack_id: pack_id to flatten dependencies for.
         pack_dependencies: pack_dependencies to flatten.
         all_packs_dependencies: all_packs_dependencies to use for flattening.
@@ -805,9 +807,12 @@ def flatten_dependencies(pack_id: str,
     Returns:
         list[dict]: A list of the flattened dependencies.
     """
+    recursion_packs_list = recursion_packs_list or set()
+
     dependencies_flatten = {}  # Using a dict to avoid duplicates.
     for pack_dependency in pack_dependencies:
-        if pack_dependency["id"] != pack_id:
+        if pack_dependency["id"] != pack_id and pack_dependency["id"] not in recursion_packs_list:
+            recursion_packs_list.add(pack_dependency["id"])
             result = flatten_dependencies(
                 pack_dependency["id"],
                 all_packs_dependencies.get(pack_dependency["id"], []),
