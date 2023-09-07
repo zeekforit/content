@@ -887,6 +887,13 @@ def search_and_install_packs_and_their_dependencies(
             "Failure while searching for packs dependencies, installing packs regardless."
         )
 
+    logging.info("Gathering all dependencies")
+    for i, (pack_id, pack_dependencies) in enumerate(all_packs_dependencies.items()):
+        packs = flatten_dependencies(pack_id, pack_dependencies, all_packs_dependencies)
+        logging.info(f"[{i}/{len(all_packs_dependencies)}] Found dependencies for pack '{pack_id}': ")
+        for pack in packs:
+            logging.info(f"\tID:{pack['id']} Version:{pack['version']}")
+
     logging.info(f"Starting to install packs on {host}")
     # Gather all dependencies and install them in batches.
     packs_installed_successfully: set[str] = set()
