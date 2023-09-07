@@ -556,7 +556,7 @@ def install_packs(
             for pack in response
         ]
         logging.success(
-            f"Packs were successfully installed on server {host} {packs_to_install}"
+            f"Packs were successfully installed on server"
         )
         logging.debug(
             f"The packs that were successfully installed on server {host}:\n{packs_data=}"
@@ -622,7 +622,7 @@ def install_packs(
     return generic_request_with_retries(client=client,
                                         retries_message=failure_massage,
                                         exception_message=failure_massage,
-                                        prior_message=f"Installing packs {packs_list} on server {host}. ",
+                                        prior_message=f"Installing packs...",
                                         path="/contentpacks/marketplace/install",
                                         body={"packs": packs_to_install, "ignoreWarnings": True},
                                         method="POST",
@@ -855,7 +855,7 @@ def search_and_install_packs_and_their_dependencies(
     start_time = datetime.utcnow()
     success = True
     all_packs_dependencies = {}
-    with ThreadPoolExecutor(max_workers=MAX_WORKERS if multithreading else 1) as pool:
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS if multithreading else 1, thread_name_prefix='SearchPacks') as pool:
         futures = [
             pool.submit(
                 get_pack_and_its_dependencies,
@@ -887,14 +887,17 @@ def search_and_install_packs_and_their_dependencies(
             "Failure while searching for packs dependencies, installing packs regardless."
         )
 
-    logging.info("Gathering all dependencies")
-    for i, (pack_id, pack_dependencies) in enumerate(all_packs_dependencies.items()):
+    logging.debug(f"Gathering all dependencies from:{len(all_packs_dependencies)} packs")
+    distinct_packs_list = set()
+    for i, (pack_id, pack_dependencies) in enumerate(all_packs_dependencies.items(), start=1):
         packs = flatten_dependencies(pack_id, pack_dependencies, all_packs_dependencies)
-        logging.info(f"[{i}/{len(all_packs_dependencies)}] Found dependencies for pack '{pack_id}': ")
+        logging.debug(f"[{i}/{len(all_packs_dependencies)}] Found dependencies for pack '{pack_id}': ")
         for pack in packs:
-            logging.info(f"\tID:{pack['id']} Version:{pack['version']}")
+            distinct_packs_list.add(pack["id"])
+            logging.debug(f"\tID:{pack['id']} Version:{pack['version']}")
+    logging.debug(f"Finished Gathering packs dependencies, found:{len(distinct_packs_list)} packs with their dependencies")
 
-    logging.info(f"Starting to install packs on {host}")
+    logging.info(f"Starting to install packs")
     # Gather all dependencies and install them in batches.
     packs_installed_successfully: set[str] = set()
     packs_to_install: dict[str, Any] = {}
@@ -912,7 +915,10 @@ def search_and_install_packs_and_their_dependencies(
             len(packs_to_install) >= max_packs_to_install  # Reached max packs to install
             or i == len(all_packs_dependencies) - 1  # Last iteration
         ):
-            logging.info(f"Installing packs: {','.join(packs_to_install.keys())}")
+            logging.debug(f"Installing {len(packs_to_install)} packs in batch")
+            for pack in packs_to_install.values():
+                logging.debug(f"\tID:{pack['id']} Version:{pack['version']}")
+
             success, installed_packs = install_packs(client, host, list(packs_to_install.values()))
             if success:
                 packs_installed_successfully |= {installed_pack["ID"] for installed_pack in installed_packs}
@@ -923,8 +929,8 @@ def search_and_install_packs_and_their_dependencies(
 
     duration = humanize.naturaldelta(datetime.utcnow() - start_time, minimum_unit='milliseconds')
     if success:
-        logging.info(f"Installing packs on {host} took {duration} seconds - Finished successfully")
+        logging.info(f"Installation of packs on {host} took {duration} - Finished successfully")
     else:
-        logging.critical(f"Installing packs on {host} took {duration} seconds - Finished with errors, "
-                         f"failed to install packs:{failed_to_install_packs}")
+        logging.critical(f"Installation of packs on {host} took {duration} - Finished with errors, "
+                         f"failed to install packs:{','.join(failed_to_install_packs)}")
     return packs_installed_successfully, success
