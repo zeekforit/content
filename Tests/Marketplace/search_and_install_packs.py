@@ -556,7 +556,7 @@ def install_packs(
             for pack in response
         ]
         logging.success(
-            f"Packs were successfully installed on server"
+            "Packs were successfully installed on server"
         )
         logging.debug(
             f"The packs that were successfully installed on server {host}:\n{packs_data=}"
@@ -622,7 +622,7 @@ def install_packs(
     return generic_request_with_retries(client=client,
                                         retries_message=failure_massage,
                                         exception_message=failure_massage,
-                                        prior_message=f"Installing packs...",
+                                        prior_message="Installing packs...",
                                         path="/contentpacks/marketplace/install",
                                         body={"packs": packs_to_install, "ignoreWarnings": True},
                                         method="POST",
@@ -897,7 +897,7 @@ def search_and_install_packs_and_their_dependencies(
             logging.debug(f"\tID:{pack['id']} Version:{pack['version']}")
     logging.debug(f"Finished Gathering packs dependencies, found:{len(distinct_packs_list)} packs with their dependencies")
 
-    logging.info(f"Starting to install packs")
+    logging.info("Starting to install packs")
     # Gather all dependencies and install them in batches.
     packs_installed_successfully: set[str] = set()
     packs_to_install: dict[str, Any] = {}
