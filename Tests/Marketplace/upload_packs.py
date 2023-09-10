@@ -1355,6 +1355,7 @@ def main():
 
         sign_and_zip_pack(pack, signature_key, remove_test_playbooks)
         shutil.copyfile(pack.zip_path, uploaded_packs_dir / f"{pack.name}.zip")
+        logging.debug(f"pack '{pack.name}' is_modified={pack.is_modified}")
         task_status, skipped_upload, _ = pack.upload_to_storage(pack.zip_path, pack.latest_version, storage_bucket,
                                                                 pack.is_modified,
                                                                 storage_base_path)

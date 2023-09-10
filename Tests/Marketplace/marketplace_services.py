@@ -1216,7 +1216,9 @@ class Pack:
 
         """
         task_status = True
-
+        logging.debug(f"starting upload_to_storage with arguments: {zip_pack_path=}, {latest_version=}, {storage_bucket=}, "
+                      f"{override_pack=}, {private_content=}, {storage_base_path=}, {pack_artifacts_path=}, "
+                      f"{overridden_upload_path=}")
         try:
             if overridden_upload_path:
                 if private_content:
@@ -1238,7 +1240,7 @@ class Pack:
                 zip_to_upload_full_path = os.path.join(version_pack_path, f"{self._pack_name}.zip")
             blob = storage_bucket.blob(zip_to_upload_full_path)
             blob.cache_control = "no-cache,max-age=0"  # disabling caching for pack blob
-
+            logging.debug(f"uploading pack {self.name} from path {zip_pack_path} to path {zip_to_upload_full_path}")
             with open(zip_pack_path, "rb") as pack_zip:
                 blob.upload_from_file(pack_zip)
             if private_content:
