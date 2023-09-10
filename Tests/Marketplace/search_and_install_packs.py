@@ -807,7 +807,7 @@ def flatten_dependencies(pack_id: str,
     Returns:
         list[dict]: A list of the flattened dependencies.
     """
-    recursion_packs_list = recursion_packs_list or set()
+    recursion_packs_list = recursion_packs_list or {pack_id}
 
     dependencies_flatten = {}  # Using a dict to avoid duplicates.
     for pack_dependency in pack_dependencies:
@@ -819,6 +819,7 @@ def flatten_dependencies(pack_id: str,
                 all_packs_dependencies,
             )
             for dependency in result:
+                recursion_packs_list.add(dependency["id"])
                 dependencies_flatten[dependency["id"]] = dependency
 
         dependencies_flatten[pack_dependency["id"]] = pack_dependency
@@ -890,8 +891,12 @@ def search_and_install_packs_and_their_dependencies(
     logging.debug(f"Gathering all dependencies from:{len(all_packs_dependencies)} packs")
     distinct_packs_list = set()
     for i, (pack_id, pack_dependencies) in enumerate(all_packs_dependencies.items(), start=1):
+        logging.debug(f"[{i}/{len(all_packs_dependencies)}] Found dependencies for pack '{pack_id}':")
+        logging.debug("Direct Dependencies:")
+        for pack in pack_dependencies:
+            logging.debug(f"\tID:{pack['id']} Version:{pack['version']}")
         packs = flatten_dependencies(pack_id, pack_dependencies, all_packs_dependencies)
-        logging.debug(f"[{i}/{len(all_packs_dependencies)}] Found dependencies for pack '{pack_id}': ")
+        logging.debug("Flattened dependencies:")
         for pack in packs:
             distinct_packs_list.add(pack["id"])
             logging.debug(f"\tID:{pack['id']} Version:{pack['version']}")
