@@ -817,6 +817,7 @@ def flatten_dependencies(pack_id: str,
                 pack_dependency["id"],
                 all_packs_dependencies.get(pack_dependency["id"], []),
                 all_packs_dependencies,
+                recursion_packs_list,
             )
             for dependency in result:
                 recursion_packs_list.add(dependency["id"])
