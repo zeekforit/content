@@ -5,11 +5,11 @@ import json
 import os
 import re
 import sys
+from collections import namedtuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
 
 import demisto_client
 import humanize  # noqa
@@ -48,6 +48,8 @@ GITLAB_PACK_METADATA_URL = (
 MALFORMED_PACK_PATTERN = re.compile(
     r"invalid version [0-9.]+ for pack with ID ([\w_-]+)"
 )
+
+PackIdVersion = namedtuple('PackIdVersion', ['id', 'version'])
 
 
 @lru_cache
@@ -271,7 +273,7 @@ def install_all_content_packs_for_nightly(
                     get_pack_installation_request_data(pack_id, pack_version)
                 )
                 logging.debug(f'Skipping installation of ignored pack "{pack_id}"')
-    install_packs(client, host, all_packs)
+    install_packs(client, all_packs)
 
 
 # def install_all_content_packs_from_build_bucket(
@@ -523,7 +525,6 @@ def get_error_ids(body: str) -> dict[int, str]:
 
 def install_packs(
     client: demisto_client,
-    host: str,
     packs_to_install: list,
     request_timeout: int = 3600,
     attempts_count: int = 5,
@@ -537,7 +538,6 @@ def install_packs(
 
     Args:
         client (demisto_client): The configured client to use.
-        host (str): The server URL.
         packs_to_install (list): A list of the packs to install.
         request_timeout (int): Timeout setting, in seconds, for the installation request.
         attempts_count (int): The number of attempts to install the packs.
@@ -556,11 +556,10 @@ def install_packs(
             for pack in response
         ]
         logging.success(
-            "Packs were successfully installed on server"
+            "packs that were successfully installed on server:"
         )
-        logging.debug(
-            f"The packs that were successfully installed on server {host}:\n{packs_data=}"
-        )
+        for pack in packs_data:
+            logging.debug(f"\tID:{pack['ID']} Version:{pack['CurrentVersion']}")
         return True, packs_data
 
     def api_exception_handler(ex, attempts_left):
@@ -834,7 +833,7 @@ def search_and_install_packs_and_their_dependencies(
     production_bucket: bool = True,
     multithreading=False,
     max_packs_to_install: int = 20,
-) -> tuple[set[str], bool]:
+) -> tuple[set[PackIdVersion], bool]:
     """
     Searches for the packs from the specified list, searches their dependencies, and then
     installs them.
@@ -847,7 +846,7 @@ def search_and_install_packs_and_their_dependencies(
         hostname (str): Hostname of instance. Using for logs.
         production_bucket (bool): Whether the installation is in post update mode. Defaults to False.
     Returns (list, bool):
-        A list of the installed packs' ids.
+        A list of the installed packs' ids and version.
         A flag that indicates if the operation succeeded or not.
     """
     host = hostname or client.api_client.configuration.host
@@ -890,7 +889,7 @@ def search_and_install_packs_and_their_dependencies(
         )
 
     logging.debug(f"Gathering all dependencies from:{len(all_packs_dependencies)} packs")
-    distinct_packs_list = set()
+    distinct_packs_list: set[PackIdVersion] = set()
     for i, (pack_id, pack_dependencies) in enumerate(all_packs_dependencies.items(), start=1):
         logging.debug(f"[{i}/{len(all_packs_dependencies)}] Found dependencies for pack '{pack_id}':")
         logging.debug("Direct Dependencies:")
@@ -899,44 +898,51 @@ def search_and_install_packs_and_their_dependencies(
         packs = flatten_dependencies(pack_id, pack_dependencies, all_packs_dependencies)
         logging.debug("Flattened dependencies:")
         for pack in packs:
-            distinct_packs_list.add(pack["id"])
+            distinct_packs_list.add(PackIdVersion(pack["id"], pack["version"]))
             logging.debug(f"\tID:{pack['id']} Version:{pack['version']}")
     logging.debug(f"Finished Gathering packs dependencies, found:{len(distinct_packs_list)} packs with their dependencies")
 
     logging.info("Starting to install packs")
     # Gather all dependencies and install them in batches.
-    packs_installed_successfully: set[str] = set()
-    packs_to_install: dict[str, Any] = {}
-    failed_to_install_packs: set[str] = set()
+    packs_installed_successfully: set[PackIdVersion] = set()
+    packs_to_install: set[PackIdVersion] = set()
+    failed_to_install_packs: set[PackIdVersion] = set()
+    batch_number = 1
     for i, (pack_id, pack_dependencies) in enumerate(all_packs_dependencies.items()):
         packs = flatten_dependencies(pack_id, pack_dependencies, all_packs_dependencies)
 
-        packs_to_install |= {
-            pack["id"]: pack
-            for pack in packs
-            if pack["id"] not in packs_installed_successfully and pack["id"] not in failed_to_install_packs
-        }
+        for pack in packs:
+            pack_version = PackIdVersion(pack["id"], pack["version"])
+            if pack_version not in packs_installed_successfully and pack_version not in failed_to_install_packs:
+                packs_to_install.add(pack_version)
 
         if (
             len(packs_to_install) >= max_packs_to_install  # Reached max packs to install
             or i == len(all_packs_dependencies) - 1  # Last iteration
         ):
-            logging.debug(f"Installing {len(packs_to_install)} packs in batch")
-            for pack in packs_to_install.values():
-                logging.debug(f"\tID:{pack['id']} Version:{pack['version']}")
+            logging.debug(f"Batch:{batch_number} - Installing {len(packs_to_install)} packs")
+            batch_number += 1
+            for pack_to_install in packs_to_install:
+                logging.debug(f"\tID:{pack_to_install.id} Version:{pack_to_install.version}")
 
-            success, installed_packs = install_packs(client, host, list(packs_to_install.values()))
+            success, installed_packs = install_packs(client, [{"id": pack_map.id,
+                                                               "version": pack_map.version} for pack_map in packs_to_install])
             if success:
-                packs_installed_successfully |= {installed_pack["ID"] for installed_pack in installed_packs}
+                packs_installed_successfully |= {
+                    PackIdVersion(installed_pack["ID"], installed_pack["CurrentVersion"]) for installed_pack in installed_packs
+                }
             else:
-                failed_to_install_packs |= set(packs_to_install.keys())
+                failed_to_install_packs |= set(packs_to_install)
                 success = False
-            packs_to_install = {}  # Reset the batch of packs to install.
+            packs_to_install = set()  # Reset the batch of packs to install.
 
     duration = humanize.naturaldelta(datetime.utcnow() - start_time, minimum_unit='milliseconds')
     if success:
         logging.info(f"Installation of packs on {host} took {duration} - Finished successfully")
     else:
         logging.critical(f"Installation of packs on {host} took {duration} - Finished with errors, "
-                         f"failed to install packs:{','.join(failed_to_install_packs)}")
+                         f"failed to install packs:")
+        for failed_pack in failed_to_install_packs:
+            logging.critical(f"\tID:{failed_pack.id} Version:{failed_pack.version}")
+
     return packs_installed_successfully, success
