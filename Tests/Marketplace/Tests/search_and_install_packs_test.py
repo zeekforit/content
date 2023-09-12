@@ -141,7 +141,7 @@ def test_search_and_install_packs_and_their_dependencies(mocker, use_multithread
 
     client = MockClient()
 
-    mocker.patch.object(script, 'install_packs', return_value=(True, [{"ID": item}
+    mocker.patch.object(script, 'install_packs', return_value=(True, [{"ID": item, "CurrentVersion": "1.0.0"}
                         for item in ['HelloWorld', 'AzureSentinel', 'TestPack']]))
     mocker.patch.object(demisto_client, 'generic_request_func', side_effect=mocked_generic_request_func)
     mocker.patch.object(script, 'is_pack_deprecated', return_value=False)  # Relevant only for post-update unit-tests
@@ -150,16 +150,16 @@ def test_search_and_install_packs_and_their_dependencies(mocker, use_multithread
                                                                                       client=client,
                                                                                       multithreading=use_multithreading,
                                                                                       production_bucket=True)
-    assert 'HelloWorld' in installed_packs
-    assert 'AzureSentinel' in installed_packs
-    assert 'TestPack' in installed_packs
+    assert script.PackIdVersion('HelloWorld', '1.0.0') in installed_packs
+    assert script.PackIdVersion('AzureSentinel', '1.0.0') in installed_packs
+    assert script.PackIdVersion('TestPack', '1.0.0') in installed_packs
     assert success is True
 
-    installed_packs, _ = script.search_and_install_packs_and_their_dependencies(pack_ids=bad_pack_ids,
-                                                                                client=client,
-                                                                                multithreading=use_multithreading,
-                                                                                production_bucket=True)
-    assert bad_pack_ids[0] not in installed_packs
+    _, success = script.search_and_install_packs_and_their_dependencies(pack_ids=bad_pack_ids,
+                                                                        client=client,
+                                                                        multithreading=use_multithreading,
+                                                                        production_bucket=True)
+    assert success is False
 
 
 @pytest.mark.parametrize('error_code,use_multithreading',
@@ -222,7 +222,7 @@ def test_install_nightly_packs_endless_loop(mocker):
         {'id': 'bad_integration1'},
         {'id': 'bad_integration2'},
     ]
-    script.install_packs(client, 'my_host', packs_to_install)
+    script.install_packs(client, packs_to_install)
 
 
 @pytest.mark.parametrize('path, latest_version', [
@@ -408,7 +408,7 @@ class TestInstallPacks:
         http_resp = MockHttpRequest(GCP_TIMEOUT_EXCEPTION_RESPONSE_BODY)
         mocker.patch.object(demisto_client, 'generic_request_func', side_effect=ApiException(http_resp=http_resp))
         client = MockClient()
-        success, _ = script.install_packs(client, 'my_host', packs_to_install=[{'id': 'pack1'}, {'id': 'pack3'}])
+        success, _ = script.install_packs(client, packs_to_install=[{'id': 'pack1'}, {'id': 'pack3'}])
         assert not success
 
     def test_malformed_pack_exception(self, mocker):
@@ -426,7 +426,7 @@ class TestInstallPacks:
         http_resp = MockHttpRequest(MALFORMED_PACK_RESPONSE_BODY)
         mocker.patch.object(demisto_client, 'generic_request_func', side_effect=ApiException(http_resp=http_resp))
         client = MockClient()
-        success, _ = script.install_packs(client, 'my_host', packs_to_install=[{'id': 'pack1'}, {'id': 'pack2'}])
+        success, _ = script.install_packs(client, packs_to_install=[{'id': 'pack1'}, {'id': 'pack2'}])
         assert not success
 
 
