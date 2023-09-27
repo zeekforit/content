@@ -2737,7 +2737,7 @@ def test_list_software_command(mocker, args, return_value_get_list_software, exp
      '|---|---|---|---|---|---|---|\n|'
      r' some\_id | CVE-3333-33333 |'
      r' some\_machine\_id |'
-     r' some\_product\_name | some\_vendor | 7.0.2.0 | High |\n',
+     r' some\_product\_name | some\_vendor | 7.0.2.0 | High |',
      {'id': 'some_id',
       'cveId': 'CVE-3333-33333', 'machineId': 'some_machine_id',
       'fixingKbId': None, 'productName': 'some_product_name', 'productVendor': 'some_vendor',
