@@ -24,10 +24,10 @@ def test_modify_functions_with_flags():
 
     if_elif3 = MockConditionParser()
     if_elif3.modify_functions_with_flags([])
-    assert if_elif3.functions['regex_match']('\s', 'a a')
+    assert if_elif3.functions['regex_match']('\\s', 'a a')
     if_elif3.modify_functions_with_flags(['regex_full_match'])
-    assert not if_elif3.functions['regex_match']('\s', 'a a')
-    assert if_elif3.functions['regex_match']('\s', ' ')
+    assert not if_elif3.functions['regex_match']('\\s', 'a a')
+    assert if_elif3.functions['regex_match']('\\s', ' ')
 
 
 @pytest.mark.parametrize(

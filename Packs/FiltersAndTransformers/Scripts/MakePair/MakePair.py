@@ -5,7 +5,7 @@ from typing import Any, List, Dict, Optional
 
 
 def demisto_get(obj: Any, path: Any) -> Any:
-    """
+    r"""
     This is an extended function of demisto.get().
     The `path` argument parameter supports a syntax of path escaped with backslash
     in order to support a key including period characters.

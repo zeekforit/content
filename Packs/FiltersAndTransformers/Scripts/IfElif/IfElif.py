@@ -95,7 +95,7 @@ class ConditionParser:
 
     def load_conditions(self, conditions):
         conditions = re.sub(
-            '#{([\s\S]+?)}',
+            r'#{([\s\S]+?)}',
             r" from_context('\1')",
             conditions
         )

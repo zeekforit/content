@@ -4637,7 +4637,7 @@ def test_gcb_test_rule_stream_command_invalid_rule_text_provided(client):
     """Test gcb_test_rule_stream_command when invalid rule text is provided."""
     from GoogleChronicleBackstory import gcb_test_rule_stream_command
     args = {
-        "rule_text": """rule demoRuleCreatedFromAPIVersion2 {
+        "rule_text": r"""rule demoRuleCreatedFromAPIVersion2 {
                                     meta:
                                     author = \"Crest Data Systems\"
                                     severity = \"Medium\"
