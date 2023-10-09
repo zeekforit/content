@@ -13,6 +13,6 @@
     "updateAfter": 0,
     "mergeContext": false,
     "expiration": 0,
-    "layout": "0d671eb0-a316-49b6-8cb7-5f0bef83964b",
+    "layout": "X509 Certificate",
     "fromVersion": "6.9.0"
 }
