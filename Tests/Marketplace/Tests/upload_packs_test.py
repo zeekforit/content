@@ -90,7 +90,8 @@ class TestUpdateIndex:
 
         mocker.patch('os.scandir', side_effect=[index_dirs, pack_dirs])
 
-        upload_packs.update_index_folder('Index', 'HelloWorld', 'HelloWorld', '2.0.1',
+        upload_packs.update_index_folder('Index', 'HelloWorld', 'HelloWorld',
+                                         '2.0.1',
                                          pack_versions_to_keep=['1.0.1', '1.0.0', '2.0.0'])
 
         expected_remove_args = ['Index/HelloWorld/metadata.json',
@@ -141,7 +142,8 @@ class TestUpdateIndex:
 
         mocker.patch('os.scandir', return_value=pack_dirs)
 
-        upload_packs.update_index_folder('Index', 'HelloWorld', 'HelloWorld', '1.0.0', pack_versions_to_keep=[])
+        upload_packs.update_index_folder('Index', 'HelloWorld', 'HelloWorld',
+                                         '1.0.0', pack_versions_to_keep=[])
 
         expected_copy_args = [('HelloWorld/metadata.json', 'Index/HelloWorld'),
                               ('HelloWorld/metadata.json', 'Index/HelloWorld/metadata-1.0.0.json'),
@@ -200,7 +202,8 @@ class TestUpdateIndex:
 
         mocker.patch('os.scandir', side_effect=[index_dirs, pack_dirs])
 
-        upload_packs.update_index_folder('Index', 'HelloWorld', 'HelloWorld', '2.0.0')
+        upload_packs.update_index_folder('Index', 'HelloWorld', 'HelloWorld',
+                                         '2.0.0')
 
         expected_remove_args = ['Index/HelloWorld/metadata-2.0.0.json', 'Index/HelloWorld/metadata.json',
                                 'Index/HelloWorld/changelog.json', 'Index/HelloWorld/README.md']
@@ -257,7 +260,8 @@ class TestUpdateIndex:
                                ('Index/HelloWorld/README.md', 'README.md')])
         mocker.patch('os.scandir', side_effect=[index_dirs, pack_dirs])
 
-        upload_packs.update_index_folder('Index', 'HelloWorld', 'HelloWorld', '1.0.0')
+        upload_packs.update_index_folder('Index', 'HelloWorld', 'HelloWorld',
+                                         '1.0.0')
 
         expected_remove_args = ['Index/HelloWorld/metadata-1.0.0.json', 'Index/HelloWorld/metadata.json',
                                 'Index/HelloWorld/changelog.json', 'Index/HelloWorld/README.md']
@@ -313,7 +317,8 @@ class TestUpdateIndex:
                                ('Index/HelloWorld/README.md', 'README.md')])
         mocker.patch('os.scandir', side_effect=[index_dirs, pack_dirs])
 
-        upload_packs.update_index_folder('Index', 'HelloWorld', 'HelloWorld', '1.0.0')
+        upload_packs.update_index_folder('Index', 'HelloWorld', 'HelloWorld',
+                                         '1.0.0')
 
         expected_remove_args = ['Index/HelloWorld/metadata.json', 'Index/HelloWorld/changelog.json',
                                 'Index/HelloWorld/README.md']
@@ -501,7 +506,8 @@ class TestCleanPacks:
             private_packs=private_packs,
             storage_bucket=dummy_storage_bucket,
             storage_base_path=GCPConfig.PRODUCTION_STORAGE_BASE_PATH,
-            content_packs=[Pack("public_pack", "/dummy_path"), Pack("private_pack", "/dummy_path")]
+            content_packs=[Pack("public_pack", "/dummy_path"), Pack("private_pack",
+                                                                    "/dummy_path")]
         )
 
         assert not skipped_cleanup
@@ -842,7 +848,8 @@ class TestUpdatedPrivatePacks:
 
         mocker.patch('os.scandir', side_effect=[index_dirs, pack_dirs])
 
-        upload_packs.update_index_folder('Index', 'HelloWorld', 'HelloWorld', '2.0.1',
+        upload_packs.update_index_folder('Index', 'HelloWorld', 'HelloWorld',
+                                         '2.0.1',
                                          pack_versions_to_keep=['2.0.1', '2.0.0'])
 
         expected_remove_args = ['Index/HelloWorld/metadata.json',
