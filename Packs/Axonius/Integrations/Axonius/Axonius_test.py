@@ -1,11 +1,9 @@
 """Axonius Integration for Cortex XSOAR - Unit Tests file."""
 
-import warnings
 from TestData.Raw_data import USERS_SQS, DUMMY_TAGS, DUMMY_DEVICES_IDS, DUMMY_USER_IDS, DUMMY_DEVICES
 from TestData.Expected_data import EXPECTED_USERS_SQS, EXPECTED_DEVICE_TAGS, EXPECTED_DEVICE
 from Axonius import run_command
-from marshmallow.warnings import RemovedInMarshmallow4Warning
-warnings.filterwarnings('ignore', category=RemovedInMarshmallow4Warning)
+import pytest
 
 
 class DummyDevices:
@@ -68,6 +66,7 @@ class DummyConnect:
         return True
 
 
+@pytest.mark.filterwarnings("ignore::marshmallow.warnings.RemovedInMarshmallow4Warning")
 def test_client():
     """Pass."""
 
@@ -78,6 +77,7 @@ def test_client():
     assert expected == result
 
 
+@pytest.mark.filterwarnings("ignore::marshmallow.warnings.RemovedInMarshmallow4Warning")
 def test_get_saved_queries():
     client = DummyConnect()
     args: dict = {"type": "users"}
@@ -85,6 +85,7 @@ def test_get_saved_queries():
     assert len(EXPECTED_USERS_SQS) == len(result.outputs)
 
 
+@pytest.mark.filterwarnings("ignore::marshmallow.warnings.RemovedInMarshmallow4Warning")
 def test_get_tags():
     client = DummyConnect()
     args: dict = {"type": "devices"}
@@ -92,6 +93,7 @@ def test_get_tags():
     assert EXPECTED_DEVICE_TAGS == result.outputs
 
 
+@pytest.mark.filterwarnings("ignore::marshmallow.warnings.RemovedInMarshmallow4Warning")
 def test_add_tags():
     client = DummyConnect()
     args: dict = {"type": "devices", "ids": DUMMY_DEVICES_IDS, "tag_name": "test"}
@@ -99,6 +101,7 @@ def test_add_tags():
     assert len(DUMMY_DEVICES_IDS) == result.outputs
 
 
+@pytest.mark.filterwarnings("ignore::marshmallow.warnings.RemovedInMarshmallow4Warning")
 def test_remove_tags():
     client = DummyConnect()
     args: dict = {"type": "users", "ids": DUMMY_USER_IDS, "tag_name": "test"}
@@ -106,6 +109,7 @@ def test_remove_tags():
     assert len(DUMMY_USER_IDS) == result.outputs
 
 
+@pytest.mark.filterwarnings("ignore::marshmallow.warnings.RemovedInMarshmallow4Warning")
 def test_get_device():
     client = DummyConnect()
     args: dict = {"value": "DESKTOP-Gary-Gaither"}
