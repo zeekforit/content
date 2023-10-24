@@ -363,6 +363,7 @@ def get_auth_method(auth_method):  # pragma: no cover
 
 
 def get_build(version_str):  # pragma: no cover
+    
     if version_str not in VERSIONS:
         raise Exception("{} is unsupported version: {}. Choose one of".format(version_str, "\\".join(list(VERSIONS.keys()))))
     return VERSIONS[version_str]
