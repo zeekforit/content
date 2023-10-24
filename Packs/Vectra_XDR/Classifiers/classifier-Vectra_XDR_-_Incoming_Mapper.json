@@ -52,25 +52,6 @@
                         ]
                     }
                 },
-                "Tags": {
-                    "complex": {
-                        "filters": [],
-                        "root": "tags",
-                        "transformers": [
-                            {
-                                "args": {
-                                    "separator": {
-                                        "isContext": false,
-                                        "value": {
-                                            "simple": ","
-                                        }
-                                    }
-                                },
-                                "operator": "join"
-                            }
-                        ]
-                    }
-                },
                 "Vectra XDR Entity Account Type": {
                     "complex": {
                         "filters": [],

@@ -11,9 +11,6 @@ from datetime import datetime
 from requests.models import Response
 
 
-
-
-
 # Disable insecure warnings
 urllib3.disable_warnings()
 
@@ -3050,6 +3047,8 @@ def get_remote_data_command(client: VectraClient, args: Dict) -> GetRemoteDataRe
         demisto.debug(f'The Vectra entity {entity_id_type} is updated.')
 
     notes = remote_incident_data.get('notes')
+    tags = remote_incident_data.get('tags')
+    demisto.debug(f"tags from remote incident: {tags}")
 
     if notes:
         for note in notes:
@@ -3077,6 +3076,7 @@ def get_remote_data_command(client: VectraClient, args: Dict) -> GetRemoteDataRe
                             f'Note: {note.get("note")}',
                 'ContentsFormat': EntryFormat.TEXT,
                 'Note': True,
+                'Tags': tags
             })
     demisto.debug(f'remote_incident_data:{remote_incident_data}')
     return GetRemoteDataResponse(remote_incident_data, new_entries_to_return)
@@ -3241,4 +3241,3 @@ def main():
 
 if __name__ in ("__main__", "__builtin__", "builtins"):  # pragma: no cover
     main()
-
