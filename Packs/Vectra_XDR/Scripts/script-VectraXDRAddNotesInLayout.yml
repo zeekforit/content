@@ -1,0 +1,59 @@
+commonfields:
+  id: VectraXDRAddNotesInLayout
+  version: -1
+name: VectraXDRAddNotesInLayout
+script: >
+  register_module_line('VectraXDRAddNotesInLayout', 'start', __line__())
+
+
+
+  import traceback
+
+  import json
+
+
+  ''' MAIN FUNCTION '''
+
+
+
+  def main():
+      try:
+          notes = demisto.incident().get('CustomFields', {}).get('vectraxdrentitynotes', [])
+          if not bool(notes):
+              return_results(
+                  {'ContentsFormat': formats['markdown'], 'Type': entryTypes['note'], 'Contents': '', 'Note': False})
+          else:
+              for note in notes:
+                  note = json.loads(note)
+                  if note:
+                      return_results(
+                          {'ContentsFormat': formats['markdown'], 'Type': entryTypes['note'],
+                           'Contents': "[Fetched From Vectra]\n"
+                                       + f"Added By: {note.get('created_by')}\n"
+                                       + f"Added At: {note.get('date_created')} UTC\n"
+                                       + f"Note Content:{note.get('note')}",
+                           'Note': True})
+      except Exception as ex:
+          demisto.error(traceback.format_exc())  # print the traceback
+          return_error(f'Failed to execute VectraXDRAddNotesInLayout. Error: {str(ex)}')
+
+
+  ''' ENTRY POINT '''
+
+
+  if __name__ in ('__main__', '__builtin__', 'builtins'):
+      main()
+
+  register_module_line('VectraXDRAddNotesInLayout', 'end', __line__())
+type: python
+tags: []
+comment: This script allows to add Entity notes in the layout.
+enabled: true
+scripttarget: 0
+subtype: python3
+runonce: false
+dockerimage: demisto/python3:3.10.13.73190
+runas: DBotWeakRole
+fromversion: 6.8.0
+tests:
+- No tests (auto formatted)
