@@ -644,6 +644,8 @@ xsiam_server_ga:
     GCS_MACHINES_BUCKET: "${TEST_XDR_PREFIX}marketplace-v2-dist-dev/upload-flow/builds-xsiam"
     MARKETPLACE_NAME: "marketplacev2"
     NON_REMOVABLE_PACKS: "Base"
+    LOCK_MACHINE_NAME: "qa2-test-9992101943618"
+
   needs:
     - job: mpv2-prepare-testing-bucket
       optional: true
