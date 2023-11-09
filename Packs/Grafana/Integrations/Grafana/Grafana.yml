@@ -3,7 +3,7 @@ commonfields:
   id: Grafana
   version: -1
 configuration:
-- defaultvalue: https://www.example.com
+- defaultvalue: https://www.content.demisto.works.com
   display: Server URL
   name: url
   required: true
