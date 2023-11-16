@@ -316,7 +316,8 @@ def bucket_upload_results(bucket_artifact_folder: Path,
 def construct_slack_msg(triggering_workflow: str,
                         pipeline_url: str,
                         pipeline_failed_jobs: list[ProjectPipelineJob],
-                        pull_request: GithubPullRequest | None) -> list[dict[str, Any]]:
+                        pull_request: GithubPullRequest | None
+                        ) -> tuple[list[dict[Any, Any]], bool]:
     # report failing jobs
     content_fields = []
 
@@ -401,7 +402,7 @@ def construct_slack_msg(triggering_workflow: str,
         'title': title,
         'title_link': pipeline_url,
         'fields': content_fields
-    }] + slack_msg_append
+    }] + slack_msg_append, has_failed_tests or bool(pipeline_failed_jobs)
 
 
 def missing_content_packs_test_conf(artifact_folder: Path) -> list[dict[str, Any]]:
@@ -465,6 +466,10 @@ def build_link_to_message(response: SlackResponse) -> str:
     return ""
 
 
+def get_pipeline_changed_status():
+    return True  # FIXME: implement
+
+
 def main():
     install_logging('Slack_Notifier.log')
     options = options_handler()
@@ -508,7 +513,17 @@ def main():
         logging.info("Not a pull request build, skipping PR comment")
 
     pipeline_url, pipeline_failed_jobs = collect_pipeline_data(gitlab_client, project_id, pipeline_id)
-    slack_msg_data = construct_slack_msg(triggering_workflow, pipeline_url, pipeline_failed_jobs, pull_request)
+    slack_msg_data, current_pipeline_failed = construct_slack_msg(triggering_workflow, pipeline_url, pipeline_failed_jobs,
+                                                                  pull_request)
+
+    #
+    if options.current_branch == DEFAULT_BRANCH and triggering_workflow == CONTENT_MERGE:
+        # We check if the previous build failed and this one passed, or wise versa.
+        pipeline_changed_status = get_pipeline_changed_status()
+        if pipeline_changed_status:
+            computed_slack_channel = "#test_slack_notifier_when_master_is_broken"
+        else:
+            computed_slack_channel = "#dmst-build-test"
 
     with contextlib.suppress(Exception):
         output_file = ROOT_ARTIFACTS_FOLDER / 'slack_msg.json'
