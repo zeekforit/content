@@ -1359,6 +1359,7 @@ def get_incidents_ids(last_created_timestamp=None, filter_arg=None, offset: int 
         params['filter'] = f"modified_timestamp:>'{last_updated_timestamp}'"
 
     response = http_request('GET', get_incidents_endpoint, params)
+    demisto.debug(f"CrowdStrikeFalconMsg: Getting Incidents from {get_incidents_endpoint} with {params=}. {response=}")
 
     return response
 
