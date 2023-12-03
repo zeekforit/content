@@ -34,6 +34,7 @@ def docker_auth(image_name, verify_ssl=True, registry=DEFAULT_REGISTRY):
     """
     Authenticate to the docker service. Return an authentication token if authentication is required.
     """
+    demisto.debug(f'Performing docker auth 1, calling https://{registry}/v2/')
     res = requests.get(
         'https://{}/v2/'.format(registry),
         headers=ACCEPT_HEADER,
@@ -55,6 +56,7 @@ def docker_auth(image_name, verify_ssl=True, registry=DEFAULT_REGISTRY):
         else:
             demisto.info('Failed extracting www-authenticate header from registry: {}, final url: {}'.format(
                 registry, res.url))
+        demisto.debug(f'Performing docker auth 2, calling {realm}?scope=repository:{image_name}:pull&service={service}')
         res = requests.get(
             '{}?scope=repository:{}:pull&service={}'.format(realm, image_name, service),
             headers=ACCEPT_HEADER,
@@ -154,6 +156,7 @@ def main():
             headers['Authorization'] = "Bearer {}".format(auth_token)
 
         # first try to get the docker image tags using normal http request
+        demisto.debug(f'Getting image tags from https://hub.docker.com/v2/repositories/{image_name}/tags')
         res = requests.get(
             url=f'https://hub.docker.com/v2/repositories/{image_name}/tags',
             verify=verify_ssl,
@@ -165,8 +168,9 @@ def main():
                 tag = find_latest_tag_by_date(tags)
 
         else:
-            # if http request did not successed than get tags using the API.
+            # if http request did not succeed than get tags using the API.
             # See: https://docs.docker.com/registry/spec/api/#listing-image-tags
+            demisto.debug(f'Getting image tags using alternative API https://{registry}/v2/{image_name}/tags/list')
             res = requests.get(
                 'https://{}/v2/{}/tags/list'.format(registry, image_name),
                 headers=headers,
