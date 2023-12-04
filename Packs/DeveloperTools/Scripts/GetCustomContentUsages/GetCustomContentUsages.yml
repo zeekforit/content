@@ -1,0 +1,54 @@
+commonfields:
+  id: GetCustomContentUsages
+  version: -1
+dockerimage: demisto/xsoar-tools:1.0.0.58259
+enabled: true
+args:
+- name: content_item
+  description: The content item
+- name: content_type
+  auto: PREDEFINED
+  predefined:
+  - "Classifier"
+  - "Command"
+  - "CorrelationRule"
+  - "Dashboard"
+  - "GenericDefinition"
+  - "GenericField"
+  - "GenericModule"
+  - "GenericType"
+  - "IncidentField"
+  - "IncidentType"
+  - "IndicatorField"
+  - "IndicatorType"
+  - "Integration"
+  - "Job"
+  - "Layout"
+  - "LayoutRule"
+  - "List"
+  - "Mapper"
+  - "ModelingRule"
+  - "ParsingRule"
+  - "Playbook"
+  - "PreProcessRule"
+  - "Report"
+  - "Script"
+  - "Trigger"
+  - "Widget"
+  - "XSIAMDashboard"
+  - "XSIAMReport"
+  - "Wizard"
+  - "XDRCTemplate"
+  description: The content item type
+  defaultValue: "false"
+engineinfo: {}
+mainengineinfo: {}
+name: GetCustomContentUsages
+pswd: ""
+runas: DBotWeakRole
+runonce: false
+script: ''
+scripttarget: 0
+subtype: python3
+tags: []
+type: python
