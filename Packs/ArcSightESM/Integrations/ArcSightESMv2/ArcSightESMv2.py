@@ -366,6 +366,24 @@ def get_query_viewer_results_command():
         return_outputs(readable_output=human_readable, outputs=outputs, raw_response=contents)
 
 
+def sorting_criteria_function(item: dict) -> int:
+    """
+    Function to handle different time formats received from AS API. For some customer values are returned in string format and not
+    UNIX and require parsing.
+    Args:
+         item (dict): the query view result item.
+    Returns:
+        int: the time parsed in UNIX format
+    """
+    time = item.get('Start Time') or item.get('Create Time')
+    if isinstance(time, int) or time.isDigit():
+        return int(time)
+    elif time:
+        return arg_to_datetime(time)
+    else:
+        raise DemistoException(f"Could not parse query view result time field for ID: {item.get('ID') or item.get('Event ID')},"
+                               f" value is: {time} of type: {type(time)}")
+
 @logger
 def fetch():
     """
@@ -381,7 +399,7 @@ def fetch():
 
     fields, query_results = get_query_viewer_results(events_query_viewer_id or cases_query_viewer_id)
     # sort query_results by creation time
-    query_results.sort(key=lambda k: int(k.get('Start Time') or k.get('Create Time')))
+    query_results.sort(key=sorting_criteria_function)
 
     incidents = []
     for result in query_results:
