@@ -2062,6 +2062,11 @@ def parse_incident_from_item(item):     # pragma: no cover
     if item.cc_recipients:
         for recipient in item.cc_recipients:
             labels.append({"type": "Email/cc", "value": recipient.email_address})
+
+    # handle bcc
+    if item.bcc_recipients:
+        for recipient in item.bcc_recipients:
+            labels.append({"type": "Email/bcc", "value": recipient.email_address})
     # handle email from
     if item.sender:
         labels.append({"type": "Email/from", "value": item.sender.email_address})
