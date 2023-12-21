@@ -1,8 +1,8 @@
 name: Sync contributor base branch
 on:
-  schedule:
+  push:
     # runs at minute 0 of the 0th hour every day.
-    - cron:  '0 0 * * *'
+    # - cron:  '0 0 * * *'
 
 permissions:
   contents: read
