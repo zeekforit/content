@@ -10,6 +10,7 @@ TC_INDICATOR_PATH = 'TC.Indicator(val.ID && val.ID === obj.ID)'
 MAX_CONTEXT = 100
 
 
+
 class Method(str, Enum):
     """
     A list that represent the types of http request available

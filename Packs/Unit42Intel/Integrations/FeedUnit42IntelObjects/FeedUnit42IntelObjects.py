@@ -4,7 +4,6 @@ from typing import Dict, List, Optional
 
 import urllib3
 
-
 # disable insecure warnings
 urllib3.disable_warnings()
 
